@@ -1,8 +1,12 @@
 [package]
 name = "xps2pdf"
-description = "Converte documenti XPS in PDF mantenendo il testo vettoriale e ricercabile"
+description = "StampaCP: converte documenti XPS in PDF mantenendo il testo vettoriale e ricercabile"
 edition.workspace = true
 version.workspace = true
 license.workspace = true
+
+[[bin]]
+name = "StampaCP"
+path = "src/main.rs"
 
 [dependencies]

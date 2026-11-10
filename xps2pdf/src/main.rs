@@ -1,6 +1,6 @@
-//! Fase 1: convertitore XPS -> PDF da riga di comando.
+//! StampaCP: convertitore XPS -> PDF da riga di comando.
 //!
-//! Uso: xps2pdf <input.xps> <output.pdf>
+//! Uso: StampaCP <input.xps> <output.pdf>
 //!
 //! Stato: scheletro. Il parsing del pacchetto XPS (ZIP + FixedPage)
 //! e la scrittura del PDF con testo vettoriale sono da implementare.
@@ -11,7 +11,7 @@ use std::process::ExitCode;
 fn main() -> ExitCode {
     let args: Vec<String> = env::args().collect();
     if args.len() != 3 {
-        eprintln!("Uso: xps2pdf <input.xps> <output.pdf>");
+        eprintln!("Uso: StampaCP <input.xps> <output.pdf>");
         return ExitCode::from(2);
     }
 
