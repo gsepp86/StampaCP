@@ -2,6 +2,12 @@
 
 Progetto di stampante PDF virtuale che conserva il testo, con preferenze gestite da una finestra dedicata.
 
+Stampante virtuale che migliora la qualità delle tue stampe, con funzioni avanzate e testo sempre ricercabile nei PDF. Creata da Peppe CP con l’aiuto della IA.
+
+## Se vuoi contribuire al mio lavoro ti lascio in basso il pulsante per contribuire anche con una piccola donazione simbolica visto che una app così utile gratis per sempre non la trovi ovunque apprezzo il gesto ;-)
+
+[![Donate via PayPal](https://img.shields.io/badge/Donate-PayPal-blue.svg?logo=paypal)](https://paypal.me/PeppeCP)
+
 ## Struttura
 
 | Crate | Ruolo | Stato |
