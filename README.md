@@ -1,3 +1,5 @@
+ATTENZIONE VERSIONE BETA IN FASE DI COMPILAZIONE
+
 # Stampante virtuale (driver v4 + Print Support App) in Rust per Windows
 
 Progetto di stampante PDF virtuale che conserva il testo, con preferenze gestite da una finestra dedicata.
