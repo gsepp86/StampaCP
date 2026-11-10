@@ -1,0 +1,317 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Anteprima finestra preferenze</title>
+<style>
+  :root { --bg:#ececec; --panel:#f7f7f7; --line:#c9c9c9; --text:#222; --muted:#666; --accent:#2a6fd6; --danger:#c8413a; }
+  * { box-sizing: border-box; }
+  body { margin:0; font: 13px/1.4 "Segoe UI", system-ui, sans-serif; background:#d8d8d8; color:var(--text); }
+  .win { width: 980px; height: 680px; margin: 24px auto; background: var(--bg); border:1px solid #888; border-radius:6px; box-shadow:0 8px 24px rgba(0,0,0,.25); overflow:hidden; display:flex; flex-direction:column; position:relative; }
+  .title { display:flex; justify-content:center; align-items:center; height:34px; background:#e2e2e2; border-bottom:1px solid var(--line); position:relative; font-weight:600; flex:none; }
+  .title .x { position:absolute; right:10px; color:var(--muted); }
+  .info { position:absolute; left:8px; top:50%; transform:translateY(-50%); width:20px; height:20px; border-radius:50%; border:1px solid #6b8fc7; background:#fff; color:#2a5aa8; font: italic 700 12px Georgia, serif; cursor:pointer; padding:0; line-height:18px; text-align:center; }
+  .info-pop { position:absolute; left:8px; top:42px; width:340px; background:#fff; border:1px solid var(--line); border-radius:6px; box-shadow:0 6px 18px rgba(0,0,0,.2); padding:12px 14px; font-weight:400; font-size:12px; line-height:1.5; display:none; z-index:10; }
+  .info-pop.open { display:block; }
+  .info-pop strong { display:block; margin-bottom:4px; font-size:13px; }
+  .info-pop a { color:var(--accent); }
+  .body { flex:1; min-height:0; display:grid; grid-template-columns: 300px 300px 1fr; grid-template-rows: minmax(0,1fr); gap:12px; padding:12px; position:relative; overflow:hidden; }
+  .col { display:flex; flex-direction:column; gap:10px; min-height:0; overflow:hidden; }
+  .group { background:var(--panel); border:1px solid var(--line); border-radius:4px; padding:10px; }
+  .col .group.grow { flex:1; min-height:0; }
+  .group h4 { margin:0 0 8px; font-size:13px; color:var(--danger); font-weight:600; }
+  .row { display:flex; align-items:center; gap:8px; margin:6px 0; flex-wrap:wrap; }
+  .row.disabled { opacity:.5; }
+  select, input[type=text], input[type=number] { padding:5px 6px; border:1px solid var(--line); border-radius:3px; background:#fff; font: inherit; }
+  select { width:100%; }
+  .btn { padding:5px 10px; border:1px solid var(--line); border-radius:3px; background:#fff; font: inherit; cursor:pointer; min-width:34px; }
+  .btn:disabled { opacity:.5; cursor:default; }
+  .opt { display:flex; align-items:center; gap:6px; margin:5px 0; cursor:pointer; user-select:none; white-space:nowrap; }
+  .opt.disabled { color:#999; cursor:default; }
+  .opt input { margin:0; }
+  .line { display:flex; align-items:center; gap:8px; white-space:nowrap; margin:5px 0; }
+  .line .opt { margin:0; }
+  .line input[type=number] { width:70px; text-align:right; }
+  .preview-col { display:flex; flex-direction:column; gap:6px; min-height:0; overflow:hidden; }
+  .preview { flex:1; min-height:0; background:#fff; border:1px solid var(--line); display:flex; align-items:center; justify-content:center; overflow:hidden; }
+  .page { width:200px; height:282px; background:#fff; border:1px solid #bbb; box-shadow:0 1px 3px rgba(0,0,0,.2); padding:14px; font-size:6px; color:#444; line-height:1.5; overflow:hidden; transform-origin:center; position:relative; flex:none; }
+  .page .h { font-size:9px; font-weight:700; color:#222; margin-bottom:6px; }
+  .pnum { position:absolute; font-size:7px; color:#222; bottom:6px; left:0; right:0; text-align:center; }
+  .pnum.right { text-align:right; right:10px; left:auto; }
+  .pnum.left { text-align:left; left:10px; right:auto; }
+  .pnum.top { top:6px; bottom:auto; }
+  .note { font-size:12px; color:var(--muted); }
+  .slider { display:flex; align-items:center; gap:8px; width:100%; }
+  .slider input[type=range] { flex:1; }
+  .footer { flex:none; display:flex; justify-content:space-between; align-items:center; padding:10px 12px; background:#e6e6e6; border-top:1px solid var(--line); }
+  .footer .right-btns { display:flex; gap:8px; }
+  .footer .primary { background: var(--accent); color:#fff; border-color:var(--accent); padding:7px 26px; }
+  /* Pannello Avanzate: il PrintTicket è nascosto finché non si apre */
+  .adv { position:absolute; inset:0; background:rgba(236,236,236,.97); display:none; flex-direction:column; gap:8px; padding:12px; z-index:5; }
+  .adv.open { display:flex; }
+  .adv h4 { margin:0; font-size:13px; color:var(--danger); }
+  .xml { flex:1; min-height:0; background:#1e1e1e; color:#d4d4d4; font: 11px/1.45 Consolas, monospace; padding:8px 10px; border-radius:3px; white-space:pre; overflow:auto; }
+</style>
+</head>
+<body>
+<div class="win">
+  <div class="title">
+    <button class="info" id="infoBtn" title="Informazioni">i</button>
+    Stampa
+    <span class="x">✕</span>
+    <div class="info-pop" id="infoPop">
+      <strong>Stampante Virtuale CP · versione 1.0</strong>
+      Stampante virtuale che migliora la qualità delle tue stampe, con funzioni avanzate e testo sempre ricercabile nei PDF. Creata da Peppe CP con l’aiuto della IA.
+      <br><br>
+      Il progetto è open source. Se vuoi contribuire con il codice o con segnalazioni, visita il repository: <a href="https://github.com/gsepp86/StampaCP" target="_blank" rel="noopener">github.com/gsepp86/StampaCP</a>
+      <br><br>
+      Se ti piace e vuoi sostenere lo sviluppo, puoi fare una donazione su <a href="https://paypal.me/PeppeCP" target="_blank" rel="noopener">paypal.me/PeppeCP</a>. Grazie!
+    </div>
+  </div>
+
+  <div class="body">
+    <!-- Colonna 1 -->
+    <div class="col">
+      <div class="group">
+        <h4>Stampante</h4>
+        <select id="printer"><option>Stampante PDF virtuale (testo vettoriale)</option></select>
+        <div class="row" style="margin-top:8px"><button class="btn" style="width:100%">Impostazioni driver stampante…</button></div>
+        <div class="row">
+          <span>Copie</span>
+          <button class="btn" id="minus">−</button>
+          <input type="number" id="copies" value="1" min="1" max="999" style="width:60px;text-align:center">
+          <button class="btn" id="plus">+</button>
+          <label class="opt"><input type="checkbox" id="collate" checked> Fascicola</label>
+        </div>
+        <div class="row"><span>Formato carta</span>
+          <select id="paper" style="width:170px">
+            <option value="A4">A4 (210 × 297 mm)</option>
+            <option value="A3">A3 (297 × 420 mm)</option>
+            <option value="Letter">Letter (216 × 279 mm)</option>
+          </select>
+        </div>
+        <div class="row"><span>Fronte/retro</span>
+          <select id="duplex" style="width:170px">
+            <option value="none">Solo fronte</option>
+            <option value="long">Fronte/retro (lato lungo)</option>
+            <option value="short">Fronte/retro (lato corto)</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="group">
+        <h4>Destinazione</h4>
+        <select id="dest">
+          <option value="pdf">Salva come PDF</option>
+          <option value="phys1">Stampante fisica: SHARP B/N STANDARD</option>
+          <option value="phys2">Stampante fisica: Stampante di rete (ufficio)</option>
+        </select>
+        <div class="row" id="pdfRow">
+          <span>Cartella</span>
+          <input type="text" id="pdfDir" value="Documenti\Stampe" style="flex:1">
+        </div>
+        <div class="note" id="destNote" style="margin-top:6px">Il PDF viene creato con testo ricercabile nella cartella indicata.</div>
+      </div>
+
+      <div class="group grow">
+        <h4>Intervallo pagine · 2 totali</h4>
+        <label class="opt"><input type="radio" name="range" value="all"> Tutto</label>
+        <label class="opt"><input type="radio" name="range" value="current"> Corrente</label>
+        <label class="opt"><input type="radio" name="range" value="custom" checked> Personalizzato</label>
+        <input type="text" id="rangeText" value="2" style="width:100%;margin-top:4px">
+      </div>
+    </div>
+
+    <!-- Colonna 2 -->
+    <div class="col">
+      <div class="group">
+        <h4>Pagine per foglio e scala</h4>
+        <div class="row"><span>Pagine per foglio</span>
+          <select id="perSheet" style="width:110px"><option value="1">1 su 1</option><option value="2">2 su 1</option><option value="4">4 su 1</option></select>
+        </div>
+        <label class="opt" id="borderOpt"><input type="checkbox" id="border" checked> Bordo attorno alle pagine</label>
+        <label class="opt"><input type="radio" name="scale" value="fit" checked> Adatta alla pagina</label>
+        <label class="opt"><input type="radio" name="scale" value="real"> Dimensioni reali (100%)</label>
+        <div class="line">
+          <label class="opt"><input type="radio" name="scale" value="custom"> Proporzione personalizzata</label>
+          <input type="number" id="customScale" value="100" min="10" max="400" disabled> <span>%</span>
+        </div>
+        <label class="opt"><input type="checkbox" id="rotate" checked> Ruota automaticamente</label>
+        <label class="opt"><input type="checkbox" id="center" checked> Centra automaticamente</label>
+      </div>
+
+      <div class="group">
+        <h4>Numero di pagina</h4>
+        <label class="opt"><input type="checkbox" id="numPages"> Numera le pagine</label>
+        <div class="row" id="numRow">
+          <span>Posizione</span>
+          <select id="numPos" style="width:170px">
+            <option value="bottom-center">In basso al centro</option>
+            <option value="bottom-right">In basso a destra</option>
+            <option value="bottom-left">In basso a sinistra</option>
+            <option value="top-right">In alto a destra</option>
+          </select>
+        </div>
+        <div class="line" id="startRow">
+          <span>Inizia da</span>
+          <input type="number" id="numStart" value="1" min="0" max="9999">
+        </div>
+      </div>
+
+      <div class="group grow">
+        <h4>Colore e luminosità</h4>
+        <label class="opt"><input type="radio" name="color" value="color"> Colori</label>
+        <label class="opt"><input type="radio" name="color" value="gray" checked> Scala di grigi</label>
+        <label class="opt"><input type="radio" name="color" value="bw"> Bianco e nero</label>
+        <div class="slider" style="margin-top:8px"><span>Scuro</span><input type="range" id="bright" min="-100" max="100" value="0"><span>Chiaro</span><input type="text" id="brightVal" value="0" style="width:44px"></div>
+      </div>
+    </div>
+
+    <!-- Colonna 3: anteprima -->
+    <div class="preview-col">
+      <div class="note" id="paperLabel">Carta: 210 × 297 mm</div>
+      <div class="preview">
+        <div class="page" id="page">
+          <div class="h">Documento di esempio</div>
+          Il testo di questa pagina resta selezionabile e ricercabile nel PDF finale, perché il convertitore usa glifi vettoriali e non immagini.<br><br>
+          Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.<br><br>
+          Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.
+          <div class="pnum" id="pnum" style="display:none"></div>
+        </div>
+      </div>
+      <div class="note" id="sheetInfo">Foglio 1 di 1 · 1 pag. per foglio</div>
+    </div>
+
+    <!-- Pannello Avanzate (PrintTicket) -->
+    <div class="adv" id="adv">
+      <h4>PrintTicket generato dalle opzioni</h4>
+      <div class="xml" id="xml"></div>
+      <div class="row" style="justify-content:flex-end"><button class="btn" id="advClose">Chiudi</button></div>
+    </div>
+  </div>
+
+  <div class="footer">
+    <button class="btn" id="advOpen">Avanzate…</button>
+    <div class="right-btns">
+      <button class="btn">Annulla</button>
+      <button class="btn primary" id="go">Salva PDF</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  const $ = id => document.getElementById(id);
+  const radio = name => document.querySelector(`input[name="${name}"]:checked`).value;
+  const PAPER = { A4: "210 × 297 mm", A3: "297 × 420 mm", Letter: "216 × 279 mm" };
+  const DEST_LABEL = {
+    pdf: "PDF in Documenti\\Stampe",
+    phys1: "SHARP B/N STANDARD",
+    phys2: "Stampante di rete (ufficio)"
+  };
+
+  function clampCopies() {
+    let n = parseInt($("copies").value, 10);
+    if (isNaN(n) || n < 1) n = 1;
+    if (n > 999) n = 999;
+    $("copies").value = n;
+    $("minus").disabled = n <= 1;
+    return n;
+  }
+
+  function update() {
+    const copies = clampCopies();
+    const scaleMode = radio("scale");
+    $("customScale").disabled = scaleMode !== "custom";
+    $("borderOpt").classList.toggle("disabled", scaleMode === "real");
+    $("border").disabled = scaleMode === "real";
+
+    const color = radio("color");
+    const page = $("page");
+    page.style.filter = color === "gray" ? "grayscale(1)" : color === "bw" ? "grayscale(1) contrast(1000%)" : "";
+    const b = parseInt($("bright").value, 10);
+    $("brightVal").value = b;
+    page.style.filter += ` brightness(${1 + b / 200})`;
+
+    const pageScale = scaleMode === "real" ? 1 : scaleMode === "custom" ? (parseInt($("customScale").value, 10) || 100) / 100 : 0.9;
+    page.style.transform = `scale(${pageScale})`;
+
+    const paper = $("paper").value;
+    $("paperLabel").textContent = "Carta: " + PAPER[paper];
+
+    const perSheet = $("perSheet").value;
+    $("sheetInfo").textContent = `Foglio 1 di 1 · ${perSheet} pag. per foglio`;
+
+    // Numero di pagina
+    const numOn = $("numPages").checked;
+    const numPos = $("numPos").value;
+    const start = parseInt($("numStart").value, 10) || 0;
+    $("numRow").classList.toggle("disabled", !numOn);
+    $("startRow").classList.toggle("disabled", !numOn);
+    $("numPos").disabled = !numOn;
+    $("numStart").disabled = !numOn;
+    const pnum = $("pnum");
+    pnum.style.display = numOn ? "block" : "none";
+    pnum.textContent = String(start);
+    pnum.className = "pnum " + (numPos.includes("right") ? "right" : numPos.includes("left") ? "left" : "")
+      + (numPos.includes("top") ? " top" : "");
+
+    // Destinazione
+    const dest = $("dest").value;
+    const isPdf = dest === "pdf";
+    $("pdfRow").classList.toggle("disabled", !isPdf);
+    $("pdfDir").disabled = !isPdf;
+    $("go").textContent = isPdf ? "Salva PDF" : "Stampa";
+    $("destNote").textContent = isPdf
+      ? "Il PDF viene creato con testo ricercabile nella cartella indicata."
+      : "Il lavoro viene inviato alla coda della stampante fisica, con lo stesso PrintTicket.";
+
+    const ticket = {
+      copies, collate: $("collate").checked, paper, duplex: $("duplex").value,
+      color, brightness: b, scale: scaleMode === "custom" ? parseInt($("customScale").value, 10) : scaleMode,
+      pagesPerSheet: parseInt(perSheet, 10), border: $("border").checked,
+      rotate: $("rotate").checked, center: $("center").checked,
+      pageNumbers: numOn, pageNumberPosition: numPos, pageNumberStart: start,
+      range: radio("range") === "custom" ? $("rangeText").value : radio("range"),
+      destination: dest, outputPath: isPdf ? $("pdfDir").value : DEST_LABEL[dest]
+    };
+    $("xml").textContent = toXml(ticket);
+  }
+
+  function toXml(t) {
+    const row = (k, v) => `  <${k}>${v}</${k}>`;
+    return [
+      `<PrintTicket>`,
+      row("Copies", t.copies),
+      row("Collate", t.collate),
+      row("PageSize", t.paper),
+      row("Duplex", t.duplex),
+      row("Color", t.color),
+      row("Brightness", t.brightness),
+      row("Scale", t.scale),
+      row("PagesPerSheet", t.pagesPerSheet),
+      row("Border", t.border),
+      row("Rotate", t.rotate),
+      row("Center", t.center),
+      row("PageNumbers", t.pageNumbers),
+      row("PageNumberPosition", t.pageNumberPosition),
+      row("PageNumberStart", t.pageNumberStart),
+      row("PageRange", t.range),
+      row("Destination", t.destination),
+      row("OutputPath", t.outputPath),
+      `</PrintTicket>`
+    ].join("\n");
+  }
+
+  $("minus").onclick = () => { $("copies").value = clampCopies() - 1; update(); };
+  $("plus").onclick = () => { $("copies").value = clampCopies() + 1; update(); };
+  $("advOpen").onclick = () => $("adv").classList.add("open");
+  $("advClose").onclick = () => $("adv").classList.remove("open");
+  $("infoBtn").onclick = e => { e.stopPropagation(); $("infoPop").classList.toggle("open"); };
+  document.addEventListener("click", () => $("infoPop").classList.remove("open"));
+  document.querySelectorAll("input, select").forEach(el => el.addEventListener("input", update));
+  document.querySelectorAll("input, select").forEach(el => el.addEventListener("change", update));
+  update();
+</script>
+</body>
+</html>
