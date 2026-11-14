@@ -1023,7 +1023,10 @@ fn main() -> ExitCode {
         "StampaCP",
         options,
         Box::new(move |_cc| {
-            Ok(Box::new(StampaCPApp::new(input_xps, elimina_input_alla_chiusura)))
+            Ok(Box::new(StampaCPApp::new(
+                input_xps,
+                elimina_input_alla_chiusura,
+            )))
         }),
     ) {
         Ok(()) => ExitCode::SUCCESS,
