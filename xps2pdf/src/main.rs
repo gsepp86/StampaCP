@@ -460,7 +460,7 @@ fn rileva_stampanti_windows() -> Vec<StampanteWindows> {
                         })
                     })
                     .collect();
-                list.sort_by(|a, b| a.nome.to_lowercase().cmp(&b.nome.to_lowercase()));
+                list.sort_by_key(|a| a.nome.to_lowercase());
                 list.dedup_by(|a, b| a.nome.eq_ignore_ascii_case(&b.nome));
                 return list;
             }
