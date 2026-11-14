@@ -10,3 +10,4 @@ name = "StampaCP"
 path = "src/main.rs"
 
 [dependencies]
+eframe = "0.29"
