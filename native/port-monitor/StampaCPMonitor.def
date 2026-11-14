@@ -1,0 +1,3 @@
+LIBRARY "StampaCPMonitor"
+EXPORTS
+    InitializePrintMonitor2

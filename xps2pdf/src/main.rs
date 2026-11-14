@@ -50,6 +50,12 @@ impl FormatoCarta {
     }
 }
 
+#[derive(Debug, Clone)]
+struct StampanteWindows {
+    nome: String,
+    driver: String,
+}
+
 #[derive(Clone, Copy, PartialEq)]
 enum FronteRetro {
     SoloFronte,
@@ -136,7 +142,8 @@ impl ModalitaColore {
 
 struct StampaCPApp {
     input_xps: Option<String>,
-    stampanti_fisiche: Vec<String>,
+    elimina_input_alla_chiusura: bool,
+    stampanti_fisiche: Vec<StampanteWindows>,
     destinazione_idx: usize, // 0 = Salva come PDF, 1.. = Stampanti fisiche
     cartella_pdf: String,
     nome_file_pdf: String,
@@ -171,15 +178,12 @@ struct StampaCPApp {
 }
 
 impl StampaCPApp {
-    fn new(input_xps: Option<String>) -> Self {
-        let mut stampanti = rileva_stampanti_windows();
-        if stampanti.is_empty() {
-            stampanti.push("SHARP B/N STANDARD".to_string());
-            stampanti.push("Stampante di rete (ufficio)".to_string());
-        }
+    fn new(input_xps: Option<String>, elimina_input_alla_chiusura: bool) -> Self {
+        let stampanti = rileva_stampanti_windows();
 
         Self {
             input_xps,
+            elimina_input_alla_chiusura,
             stampanti_fisiche: stampanti,
             destinazione_idx: 0,
             cartella_pdf: r"Documenti\Stampe".to_string(),
@@ -210,13 +214,29 @@ impl StampaCPApp {
 
             mostra_info: false,
             mostra_avanzate: false,
-            messaggio_stato: None,
+            messaggio_stato: if elimina_input_alla_chiusura {
+                Some("Lavoro ricevuto dalla coda di stampa.".to_string())
+            } else {
+                None
+            },
             aggiornamento_rx: None,
         }
     }
 
     fn is_pdf(&self) -> bool {
         self.destinazione_idx == 0
+    }
+
+    fn driver_corrente_label(&self) -> String {
+        if self.is_pdf() {
+            "Motore PDF vettoriale StampaCP".to_string()
+        } else {
+            self.stampanti_fisiche
+                .get(self.destinazione_idx - 1)
+                .map(|p| p.driver.clone())
+                .filter(|driver| !driver.is_empty())
+                .unwrap_or_else(|| "Driver non disponibile".to_string())
+        }
     }
 
     fn destinazione_corrente_label(&self) -> String {
@@ -226,7 +246,10 @@ impl StampaCPApp {
             let idx = self.destinazione_idx - 1;
             format!(
                 "Stampante fisica: {}",
-                self.stampanti_fisiche.get(idx).cloned().unwrap_or_default()
+                self.stampanti_fisiche
+                    .get(idx)
+                    .map(|p| p.nome.clone())
+                    .unwrap_or_default()
             )
         }
     }
@@ -256,7 +279,7 @@ impl StampaCPApp {
             let nome = self
                 .stampanti_fisiche
                 .get(self.destinazione_idx - 1)
-                .cloned()
+                .map(|p| p.nome.clone())
                 .unwrap_or_default();
             (format!("phys{}", self.destinazione_idx), nome)
         };
@@ -321,9 +344,19 @@ impl StampaCPApp {
             }
         } else if let Some(stampante) = self.stampanti_fisiche.get(self.destinazione_idx - 1) {
             self.messaggio_stato = Some(format!(
-                "Lavoro inviato a '{}' ({} copie)",
-                stampante, self.copie
+                "Stampante selezionata: '{}'. Inoltro fisico non ancora implementato.",
+                stampante.nome
             ));
+        }
+    }
+}
+
+impl Drop for StampaCPApp {
+    fn drop(&mut self) {
+        if self.elimina_input_alla_chiusura {
+            if let Some(path) = &self.input_xps {
+                let _ = std::fs::remove_file(path);
+            }
         }
     }
 }
@@ -402,27 +435,34 @@ fn versione_nuova(disponibile: &str, corrente: &str) -> bool {
 }
 
 /// Rileva le stampanti installate su Windows tramite PowerShell/WMI senza dipendenze pesanti.
-fn rileva_stampanti_windows() -> Vec<String> {
+fn rileva_stampanti_windows() -> Vec<StampanteWindows> {
     #[cfg(target_os = "windows")]
     {
+        // Legge nome coda e driver effettivo da PrintManagement; non crea o modifica code.
+        let script = r#"$OutputEncoding = [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new(); Get-Printer | Sort-Object Name | ForEach-Object { [Console]::WriteLine(('{0}{1}{2}' -f $_.Name, [char]9, $_.DriverName)) }"#;
         if let Ok(output) = Command::new("powershell")
-            .args([
-                "-NoProfile",
-                "-Command",
-                "Get-Printer | Select-Object -ExpandProperty Name",
-            ])
+            .args(["-NoProfile", "-NonInteractive", "-Command", script])
             .output()
         {
             if output.status.success() {
                 let stdout = String::from_utf8_lossy(&output.stdout);
-                let list: Vec<String> = stdout
+                let mut list: Vec<StampanteWindows> = stdout
                     .lines()
-                    .map(|l| l.trim().to_string())
-                    .filter(|l| !l.is_empty() && !l.eq_ignore_ascii_case("StampaCP"))
+                    .filter_map(|line| {
+                        let (nome, driver) = line.trim().split_once('\t')?;
+                        let nome = nome.trim();
+                        if nome.is_empty() || nome.eq_ignore_ascii_case("StampaCP") {
+                            return None;
+                        }
+                        Some(StampanteWindows {
+                            nome: nome.to_string(),
+                            driver: driver.trim().to_string(),
+                        })
+                    })
                     .collect();
-                if !list.is_empty() {
-                    return list;
-                }
+                list.sort_by_key(|a| a.nome.to_lowercase());
+                list.dedup_by(|a, b| a.nome.eq_ignore_ascii_case(&b.nome));
+                return list;
             }
         }
     }
@@ -436,8 +476,8 @@ impl eframe::App for StampaCPApp {
 
         // Spaziature e controlli ridotti per sfruttare meglio lo spazio disponibile.
         let mut style = (*ctx.style()).clone();
-        style.spacing.item_spacing = egui::vec2(5.0, 3.0);
-        style.spacing.button_padding = egui::vec2(5.0, 2.0);
+        style.spacing.item_spacing = egui::vec2(4.0, 2.0);
+        style.spacing.button_padding = egui::vec2(4.0, 2.0);
         style.spacing.interact_size = egui::vec2(16.0, 16.0);
         style.spacing.slider_width = 90.0;
         style
@@ -587,8 +627,15 @@ impl eframe::App for StampaCPApp {
                 cols[0].group(|ui| {
                     ui.set_width(ui.available_width());
                     ui.label(egui::RichText::new("Stampante").color(danger).strong());
-                    ui.label("Driver: Stampante PDF virtuale (testo vettoriale)");
-                    ui.add_space(4.0);
+                    ui.label(format!("Driver selezionato: {}", self.driver_corrente_label()));
+                    ui.label(
+                        egui::RichText::new(format!(
+                            "Stampanti Windows rilevate: {}",
+                            self.stampanti_fisiche.len()
+                        ))
+                        .small(),
+                    );
+                    ui.add_space(3.0);
                     ui.horizontal(|ui| {
                         ui.label("Copie:");
                         if ui.button("−").clicked() && self.copie > 1 {
@@ -671,7 +718,7 @@ impl eframe::App for StampaCPApp {
                                 ui.selectable_value(
                                     &mut self.destinazione_idx,
                                     i + 1,
-                                    format!("Stampante fisica: {sp}"),
+                                    format!("{}  ·  {}", sp.nome, sp.driver),
                                 );
                             }
                         });
@@ -691,7 +738,7 @@ impl eframe::App for StampaCPApp {
                     let note = if self.is_pdf() {
                         "Il PDF viene creato con testo ricercabile nella cartella indicata."
                     } else {
-                        "Il lavoro viene inoltrato alla coda della stampante fisica selezionata."
+                        "Stampante rilevata e selezionabile; inoltro fisico non ancora attivo."
                     };
                     ui.label(egui::RichText::new(note).small().weak());
                 });
@@ -964,17 +1011,25 @@ impl eframe::App for StampaCPApp {
 fn main() -> ExitCode {
     let args: Vec<String> = env::args().collect();
 
-    if args.len() == 3 {
-        return match xps2pdf::convert_file(&args[1], &args[2]) {
-            Ok(()) => ExitCode::SUCCESS,
-            Err(e) => {
-                eprintln!("Errore: {e}");
-                ExitCode::FAILURE
+    let (input_xps, elimina_input_alla_chiusura) =
+        if args.get(1).map(String::as_str) == Some("--spool-job") {
+            if args.len() != 3 {
+                eprintln!("Uso: StampaCP.exe --spool-job <percorso-lavoro.xps>");
+                return ExitCode::FAILURE;
             }
+            (Some(args[2].clone()), true)
+        } else {
+            if args.len() == 3 {
+                return match xps2pdf::convert_file(&args[1], &args[2]) {
+                    Ok(()) => ExitCode::SUCCESS,
+                    Err(e) => {
+                        eprintln!("Errore: {e}");
+                        ExitCode::FAILURE
+                    }
+                };
+            }
+            (args.get(1).cloned(), false)
         };
-    }
-
-    let input_xps = args.get(1).cloned();
 
     let icon_image =
         image::load_from_memory(include_bytes!(concat!(env!("OUT_DIR"), "/stampacp.ico")))
@@ -988,7 +1043,7 @@ fn main() -> ExitCode {
 
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_inner_size([900.0, 610.0])
+            .with_inner_size([820.0, 570.0])
             .with_min_inner_size([760.0, 500.0])
             .with_title("StampaCP - Stampante Virtuale")
             .with_icon(std::sync::Arc::new(icon)),
@@ -998,7 +1053,12 @@ fn main() -> ExitCode {
     match eframe::run_native(
         "StampaCP",
         options,
-        Box::new(move |_cc| Ok(Box::new(StampaCPApp::new(input_xps)))),
+        Box::new(move |_cc| {
+            Ok(Box::new(StampaCPApp::new(
+                input_xps,
+                elimina_input_alla_chiusura,
+            )))
+        }),
     ) {
         Ok(()) => ExitCode::SUCCESS,
         Err(_) => ExitCode::FAILURE,
