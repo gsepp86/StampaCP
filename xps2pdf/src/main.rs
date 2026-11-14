@@ -379,7 +379,14 @@ fn versione_nuova(disponibile: &str, corrente: &str) -> bool {
             .trim()
             .trim_start_matches('v')
             .split('.')
-            .map(|parte| parte.split('-').next().unwrap_or(parte).parse().unwrap_or(0))
+            .map(|parte| {
+                parte
+                    .split('-')
+                    .next()
+                    .unwrap_or(parte)
+                    .parse()
+                    .unwrap_or(0)
+            })
             .collect()
     }
     let nuova = numeri(disponibile);
@@ -459,7 +466,11 @@ impl eframe::App for StampaCPApp {
                         .color(accent),
                 );
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if ui.small_button("ℹ Info").on_hover_text("Informazioni su StampaCP").clicked() {
+                    if ui
+                        .small_button("ℹ Info")
+                        .on_hover_text("Informazioni su StampaCP")
+                        .clicked()
+                    {
                         self.mostra_info = !self.mostra_info;
                     }
                     let cerca = ui.add_enabled(
@@ -965,9 +976,10 @@ fn main() -> ExitCode {
 
     let input_xps = args.get(1).cloned();
 
-    let icon_image = image::load_from_memory(include_bytes!(concat!(env!("OUT_DIR"), "/stampacp.ico")))
-        .expect("icona StampaCP non valida")
-        .into_rgba8();
+    let icon_image =
+        image::load_from_memory(include_bytes!(concat!(env!("OUT_DIR"), "/stampacp.ico")))
+            .expect("icona StampaCP non valida")
+            .into_rgba8();
     let icon = egui::IconData {
         width: icon_image.width(),
         height: icon_image.height(),
