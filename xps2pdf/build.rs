@@ -15,12 +15,8 @@ fn main() {
 
     // Produce una risorsa ICO a 256 px: Windows può ridimensionarla per il desktop
     // senza dover ingrandire al volo la vecchia risorsa da 32 px.
-    let enlarged = image::imageops::resize(
-        &original,
-        256,
-        256,
-        image::imageops::FilterType::Lanczos3,
-    );
+    let enlarged =
+        image::imageops::resize(&original, 256, 256, image::imageops::FilterType::Lanczos3);
     let sharpened = image::imageops::unsharpen(&enlarged, 1.2, 6);
     let icon_path = out.join("stampacp.ico");
     let mut icon_file = fs::File::create(&icon_path).expect("impossibile creare l'icona ICO");
