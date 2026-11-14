@@ -991,7 +991,7 @@ fn main() -> ExitCode {
             .with_inner_size([900.0, 610.0])
             .with_min_inner_size([760.0, 500.0])
             .with_title("StampaCP - Stampante Virtuale")
-            .with_icon(Some(std::sync::Arc::new(icon))),
+            .with_icon(std::sync::Arc::new(icon)),
         ..Default::default()
     };
 
