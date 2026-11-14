@@ -35,14 +35,19 @@ Name: "italian"; MessagesFile: "compiler:Languages\Italian.isl"
 
 [Tasks]
 Name: "desktopicon"; Description: "Crea un'icona sul desktop"; GroupDescription: "Icone aggiuntive:"; Flags: unchecked
+Name: "autostart"; Description: "Avvia {#MyAppName} all'accensione del PC (serve alla stampante virtuale)"; GroupDescription: "Avvio automatico:"
 
 [Files]
 Source: "..\target\release\{#MyAppExe}"; DestDir: "{app}"; Flags: ignoreversion
+Source: "Installa-Stampante.ps1"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
 Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExe}"; IconFilename: "{app}\{#MyAppExe}"
 Name: "{group}\Disinstalla {#MyAppName}"; Filename: "{uninstallexe}"
 Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExe}"; Tasks: desktopicon; IconFilename: "{app}\{#MyAppExe}"
+Name: "{userstartup}\{#MyAppName}"; Filename: "{app}\{#MyAppExe}"; Tasks: autostart; IconFilename: "{app}\{#MyAppExe}"
 
 [Run]
+Filename: "powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\Installa-Stampante.ps1"""; StatusMsg: "Installazione della stampante virtuale {#MyAppName}..."; Flags: runhidden waituntilterminated
 Filename: "{app}\{#MyAppExe}"; Description: "Avvia {#MyAppName}"; Flags: nowait postinstall skipifsilent unchecked
+

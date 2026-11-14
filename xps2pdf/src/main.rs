@@ -282,8 +282,8 @@ impl StampaCPApp {
             .max()
             .unwrap_or(0)
             .max("Salva come PDF (testo vettoriale)".chars().count());
-        let colonna = (caratteri as f32 * 7.4 + 90.0).clamp(300.0, 560.0);
-        (colonna * 3.0 + 36.0).clamp(1000.0, 1500.0)
+        let colonna = (caratteri as f32 * 7.2 + 80.0).clamp(280.0, 460.0);
+        (colonna * 3.0 + 30.0).clamp(940.0, 1220.0)
     }
 
     /// Converte il file XPS ricevuto all'avvio nella cartella PDF configurata.
@@ -413,19 +413,25 @@ impl StampaCPApp {
                 self.cartella_pdf.trim_end_matches('\\'),
                 self.nome_file_pdf
             );
-            if let Some(ref xps) = self.input_xps {
-                match xps2pdf::convert_file(xps, &out) {
-                    Ok(()) => {
-                        self.ultimo_pdf = Some(out.clone());
-                        self.messaggio_stato = Some(format!("PDF salvato in: {out}"));
+            let Some((ingresso, da_coda)) = self.ingresso_disponibile() else {
+                self.messaggio_stato = Some(
+                    "Nessun lavoro XPS da salvare: usa «Apri XPS…» o stampa sulla stampante virtuale."
+                        .to_string(),
+                );
+                return;
+            };
+            match xps2pdf::convert_file(&ingresso, &out) {
+                Ok(()) => {
+                    if da_coda {
+                        let _ = fs::remove_file(&ingresso);
                     }
-                    Err(e) => {
-                        self.messaggio_stato = Some(format!("Conversione: {e}"));
-                    }
+                    self.input_xps = Some(ingresso);
+                    self.ultimo_pdf = Some(out.clone());
+                    self.messaggio_stato = Some(format!("PDF salvato in: {out}"));
                 }
-            } else {
-                self.messaggio_stato =
-                    Some(format!("Pronto al salvataggio PDF vettoriale in: {out}"));
+                Err(e) => {
+                    self.messaggio_stato = Some(format!("Conversione: {e}"));
+                }
             }
         } else if let Some(stampante) = self.stampanti_fisiche.get(self.destinazione_idx - 1) {
             self.messaggio_stato = Some(format!(
@@ -433,6 +439,17 @@ impl StampaCPApp {
                 stampante, self.copie
             ));
         }
+    }
+
+    /// File XPS da convertire: quello caricato oppure il primo lavoro rimasto
+    /// nella cartella di transito. Il secondo valore indica se viene dalla coda.
+    fn ingresso_disponibile(&self) -> Option<(String, bool)> {
+        if let Some(percorso) = &self.input_xps {
+            if Path::new(percorso).is_file() {
+                return Some((percorso.clone(), false));
+            }
+        }
+        primo_lavoro_in_coda(&self.cartella_coda).map(|percorso| (percorso, true))
     }
 }
 
@@ -538,6 +555,101 @@ fn rileva_stampanti_windows() -> Vec<String> {
     Vec::new()
 }
 
+/// Script PowerShell che crea la stampante virtuale «StampaCP».
+#[cfg(target_os = "windows")]
+const SCRIPT_STAMPANTE: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../installer/Installa-Stampante.ps1"
+));
+
+/// Primo lavoro XPS rimasto nella cartella di transito (il più vecchio).
+fn primo_lavoro_in_coda(cartella: &str) -> Option<String> {
+    let mut migliore: Option<(std::time::SystemTime, PathBuf)> = None;
+    for voce in fs::read_dir(cartella).ok()?.flatten() {
+        let percorso = voce.path();
+        if !percorso.is_file() {
+            continue;
+        }
+        let estensione = percorso
+            .extension()
+            .and_then(|valore| valore.to_str())
+            .unwrap_or_default()
+            .to_ascii_lowercase();
+        if estensione != "xps" && estensione != "oxps" {
+            continue;
+        }
+        let istante = voce
+            .metadata()
+            .and_then(|meta| meta.modified())
+            .unwrap_or(std::time::UNIX_EPOCH);
+        let piu_vecchio = migliore
+            .as_ref()
+            .map(|(altro, _)| istante < *altro)
+            .unwrap_or(true);
+        if piu_vecchio {
+            migliore = Some((istante, percorso));
+        }
+    }
+    migliore.map(|(_, percorso)| percorso.to_string_lossy().to_string())
+}
+
+/// Chiede all'utente un file XPS tramite la finestra di dialogo di Windows.
+fn scegli_file_xps() -> Option<String> {
+    #[cfg(target_os = "windows")]
+    {
+        let script = r#"Add-Type -AssemblyName System.Windows.Forms; $d = New-Object System.Windows.Forms.OpenFileDialog; $d.Title = 'Scegli un lavoro XPS'; $d.Filter = 'Documenti XPS (*.xps;*.oxps)|*.xps;*.oxps|Tutti i file (*.*)|*.*'; if ($d.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) { Write-Output $d.FileName }"#;
+        let output = Command::new("powershell")
+            .args(["-NoProfile", "-STA", "-Command", script])
+            .output()
+            .ok()?;
+        if !output.status.success() {
+            return None;
+        }
+        let percorso = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        if percorso.is_empty() {
+            None
+        } else {
+            Some(percorso)
+        }
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        None
+    }
+}
+
+/// Installa la stampante virtuale eseguendo lo script con i privilegi richiesti.
+fn installa_stampante_virtuale() -> Result<String, String> {
+    #[cfg(target_os = "windows")]
+    {
+        let percorso = env::temp_dir().join("StampaCP-InstallaStampante.ps1");
+        fs::write(&percorso, SCRIPT_STAMPANTE)
+            .map_err(|errore| format!("impossibile scrivere lo script: {errore}"))?;
+        let comando = format!(
+            "$p = Start-Process powershell -Verb RunAs -Wait -PassThru -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-File','{}'; exit $p.ExitCode",
+            percorso.display()
+        );
+        let output = Command::new("powershell")
+            .args(["-NoProfile", "-NonInteractive", "-Command", &comando])
+            .output()
+            .map_err(|errore| format!("avvio di PowerShell non riuscito: {errore}"))?;
+        if output.status.success() {
+            Ok("Stampante virtuale «StampaCP» installata: stampa un documento e il PDF comparirà in Documenti\\Stampe.".to_string())
+        } else {
+            let dettaglio = String::from_utf8_lossy(&output.stderr).trim().to_string();
+            if dettaglio.is_empty() {
+                Err("installazione annullata o non riuscita (serve l'autorizzazione di amministratore).".to_string())
+            } else {
+                Err(dettaglio)
+            }
+        }
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        Err("la stampante virtuale si installa solo su Windows.".to_string())
+    }
+}
+
 /// Cartella Documenti dell'utente corrente.
 fn cartella_documenti() -> String {
     if let Ok(profilo) = env::var("USERPROFILE") {
@@ -595,6 +707,8 @@ fn sorveglia_coda(
     let _ = fs::create_dir_all(&cartella);
     let mut dimensioni: HashMap<PathBuf, u64> = HashMap::new();
     let mut tentativi: HashMap<PathBuf, u32> = HashMap::new();
+    // Firma dei file già convertiti ma non cancellabili (porta occupata dallo spooler).
+    let mut gia_convertiti: HashMap<PathBuf, (u64, Option<std::time::SystemTime>)> = HashMap::new();
 
     while attivo.load(Ordering::Relaxed) {
         if let Ok(voci) = fs::read_dir(&cartella) {
@@ -615,6 +729,11 @@ fn sorveglia_coda(
                 if dimensione == 0 {
                     continue;
                 }
+                let modificato = voce.metadata().and_then(|meta| meta.modified()).ok();
+                let firma = (dimensione, modificato);
+                if gia_convertiti.get(&percorso) == Some(&firma) {
+                    continue;
+                }
                 // Attende che il driver abbia finito di scrivere il file.
                 if dimensioni.get(&percorso) != Some(&dimensione) {
                     dimensioni.insert(percorso.clone(), dimensione);
@@ -625,7 +744,13 @@ fn sorveglia_coda(
                 let destinazione = percorso_pdf_automatico(&uscita, &sorgente);
                 match xps2pdf::convert_file(&sorgente, &destinazione) {
                     Ok(()) => {
-                        let _ = fs::remove_file(&percorso);
+                        if fs::remove_file(&percorso).is_ok() {
+                            gia_convertiti.remove(&percorso);
+                        } else {
+                            // La porta della stampante tiene il file aperto: non
+                            // riconvertirlo finché non viene sovrascritto.
+                            gia_convertiti.insert(percorso.clone(), firma);
+                        }
                         dimensioni.remove(&percorso);
                         tentativi.remove(&percorso);
                         if tx.send(EventoCoda::Creato(destinazione)).is_err() {
@@ -785,6 +910,28 @@ impl eframe::App for StampaCPApp {
                     } else {
                         self.messaggio_stato =
                             Some("Nessuna nuova stampante rilevata dal sistema.".to_string());
+                    }
+                }
+
+                if ui
+                    .button("Apri XPS…")
+                    .on_hover_text("Scegli un file XPS da convertire in PDF")
+                    .clicked()
+                {
+                    match scegli_file_xps() {
+                        Some(percorso) => {
+                            if let Some(base) = Path::new(&percorso)
+                                .file_stem()
+                                .and_then(|nome| nome.to_str())
+                            {
+                                self.nome_file_pdf = format!("{base}.pdf");
+                            }
+                            self.input_xps = Some(percorso);
+                            self.esegui_azione();
+                        }
+                        None => {
+                            self.messaggio_stato = Some("Nessun file XPS selezionato.".to_string());
+                        }
                     }
                 }
 
@@ -958,6 +1105,19 @@ impl eframe::App for StampaCPApp {
                             }
                         });
 
+                    let lavoro = self
+                        .input_xps
+                        .as_deref()
+                        .and_then(|percorso| Path::new(percorso).file_name())
+                        .and_then(|nome| nome.to_str())
+                        .unwrap_or("nessun lavoro XPS caricato")
+                        .to_string();
+                    ui.label(
+                        egui::RichText::new(format!("Lavoro: {lavoro}"))
+                            .small()
+                            .weak(),
+                    );
+
                     ui.add_space(4.0);
                     ui.add_enabled_ui(self.is_pdf(), |ui| {
                         ui.horizontal(|ui| {
@@ -996,6 +1156,25 @@ impl eframe::App for StampaCPApp {
                             .weak(),
                         );
                     });
+                    ui.add_space(4.0);
+                    if ui
+                        .button("Installa stampante virtuale")
+                        .on_hover_text(
+                            "Crea la stampante «StampaCP» che consegna i lavori a questa finestra",
+                        )
+                        .clicked()
+                    {
+                        match installa_stampante_virtuale() {
+                            Ok(messaggio) => {
+                                self.coda_attiva = true;
+                                self.messaggio_stato = Some(messaggio);
+                            }
+                            Err(errore) => {
+                                self.messaggio_stato =
+                                    Some(format!("Stampante virtuale: {errore}"));
+                            }
+                        }
+                    }
                 });
 
                 cols[0].add_space(6.0);
@@ -1324,8 +1503,8 @@ fn main() -> ExitCode {
 
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_inner_size([larghezza, 660.0])
-            .with_min_inner_size([980.0, 540.0])
+            .with_inner_size([larghezza, 640.0])
+            .with_min_inner_size([900.0, 520.0])
             .with_title("StampaCP - Stampante Virtuale")
             .with_icon(std::sync::Arc::new(icon)),
         ..Default::default()

@@ -51,3 +51,33 @@ Poiché **StampaCP** sfrutta i driver di stampa nativi e firmati di Windows (evi
 1. Compila lo script Inno Setup per generare l'eseguibile di installazione:
    ```cmd
    ISCC.exe installer\StampaCP.iss
+   ```
+2. Avvia `dist\StampaCP-2.0.0-setup.exe`: oltre al programma viene creata la stampante
+   **StampaCP** (driver XPS di Windows con porta sulla cartella di transito) e, se lo richiedi,
+   l'avvio automatico di StampaCP all'accensione del PC.
+3. Stampa un documento scegliendo la stampante «StampaCP»: il PDF compare in `Documenti\Stampe`
+   con il nome del documento.
+
+### 2. Installazione manuale (senza installer)
+1. Copia `StampaCP.exe` dove preferisci.
+2. Apri StampaCP e premi **Installa stampante virtuale** nel riquadro «Destinazione»
+   (Windows chiede l'autorizzazione di amministratore); in alternativa, da PowerShell come
+   amministratore:
+   ```cmd
+   powershell -NoProfile -ExecutionPolicy Bypass -File installer\Installa-Stampante.ps1
+   ```
+3. Se la stampante non viene creata, verifica che il componente **Microsoft XPS Document Writer**
+   sia presente (Impostazioni → App → Funzionalità facoltative) e riprova. Se al momento della
+   stampa Windows chiede dove salvare il file, scegli la cartella di transito: il PDF verrà
+   prodotto lo stesso.
+4. Per rimuoverla: `Remove-Printer -Name StampaCP` da PowerShell amministratore.
+
+### Come si salva un PDF
+
+- Stampa sulla stampante «StampaCP» con StampaCP aperto (o avviato automaticamente): il lavoro
+  arriva nella cartella di transito e viene convertito senza altre azioni.
+- Oppure premi **Apri XPS…**: scegli il file XPS e viene convertito subito con lo stesso nome
+  nella cartella indicata.
+- Il pulsante **Salva PDF** converte il lavoro attualmente caricato (o il primo rimasto in coda);
+  se non c'è nessun lavoro XPS lo segnala esplicitamente.
+- Le cartelle di uscita e di transito sono modificabili nel riquadro «Destinazione».
