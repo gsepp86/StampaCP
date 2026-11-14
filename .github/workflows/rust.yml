@@ -26,6 +26,11 @@ jobs:
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
 
+      - name: Build native print monitor (x64)
+        run: |
+          cmake -S native/port-monitor -B build/port-monitor -G "Visual Studio 17 2022" -A x64
+          cmake --build build/port-monitor --config Release
+
       - name: Check formatting
         run: cargo fmt --all -- --check
 
@@ -45,4 +50,5 @@ jobs:
           path: |
             target/release/*.exe
             target/release/*.dll
+            build/port-monitor/Release/StampaCPMonitor.dll
           if-no-files-found: ignore
