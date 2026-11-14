@@ -58,7 +58,7 @@ bool SetJobFileAcl(const std::wstring& path, HANDLE user_token) {
     }
 
     EXPLICIT_ACCESSW entries[3]{};
-    entries[0].grfAccessPermissions = FILE_GENERIC_READ;
+    entries[0].grfAccessPermissions = FILE_GENERIC_READ | DELETE;
     entries[0].grfAccessMode = SET_ACCESS;
     entries[0].grfInheritance = NO_INHERITANCE;
     BuildTrusteeWithSidW(&entries[0].Trustee, token_user->User.Sid);
@@ -266,9 +266,22 @@ BOOL WINAPI StartDocPort(HANDLE port, LPWSTR, DWORD, DWORD level, LPBYTE) {
     if (!GetTempFileNameW(temp_path, L"SCP", 0, temp_file)) return FALSE;
 
     context->spool_path = temp_file;
+    const size_t extension = context->spool_path.find_last_of(L'.');
+    if (extension == std::wstring::npos) {
+        DeleteFileW(temp_file);
+        context->spool_path.clear();
+        SetLastError(ERROR_INVALID_NAME);
+        return FALSE;
+    }
+    context->spool_path.replace(extension, std::wstring::npos, L".xps");
+    if (!MoveFileExW(temp_file, context->spool_path.c_str(), MOVEFILE_WRITE_THROUGH)) {
+        DeleteFileW(temp_file);
+        context->spool_path.clear();
+        return FALSE;
+    }
     context->file = CreateFileW(
         context->spool_path.c_str(), GENERIC_WRITE, 0, nullptr,
-        CREATE_ALWAYS, FILE_ATTRIBUTE_TEMPORARY, nullptr);
+        OPEN_EXISTING, FILE_ATTRIBUTE_TEMPORARY, nullptr);
     if (context->file == INVALID_HANDLE_VALUE) {
         DeleteFileW(context->spool_path.c_str());
         context->spool_path.clear();
