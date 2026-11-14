@@ -1,8 +1,8 @@
-# StampaCP · Stampante virtuale in Rust per Windows
+# StampaCP 2.0 · Stampante virtuale in Rust per Windows
 
 Progetto di stampante PDF virtuale ultra-leggera che conserva il testo vettoriale ricercabile, con finestra nativa **egui / eframe** (zero dipendenze Chrome/WebView2) e inoltro rapido verso stampanti fisiche.
 
-## Struttura
+## Versione 2.0\n\nLa versione 2.0 include l’icona applicativa condivisa tra finestra, eseguibile e collegamento desktop, oltre al controllo delle nuove release pubblicate su GitHub. Il pulsante “Cerca aggiornamenti” apre la pagina della release quando trova una versione più recente.\n\n## Struttura
 
 | Percorso | Ruolo | Stato |
 |---|---|---|
