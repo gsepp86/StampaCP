@@ -15,7 +15,7 @@ const VERSIONE: &str = "1.0.0";
 const GITHUB: &str = "https://github.com/gsepp86/StampaCP";
 const PAYPAL: &str = "https://paypal.me/PeppeCP";
 
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 enum FormatoCarta {
     A4,
     A3,
@@ -741,7 +741,7 @@ impl eframe::App for StampaCPApp {
                     ui.painter().rect_stroke(
                         preview_rect,
                         4.0,
-                        egui::Stroke::new(1.0, egui::Color32::from_gray(195)),
+                        egui::Stroke::new(1.0_f32, egui::Color32::from_gray(195)),
                     );
 
                     // Calcolo dimensioni foglio proporzionate
@@ -771,7 +771,7 @@ impl eframe::App for StampaCPApp {
                         ui.painter().rect_stroke(
                             sheet_rect,
                             2.0,
-                            egui::Stroke::new(1.0, egui::Color32::from_gray(160)),
+                            egui::Stroke::new(1.0_f32, egui::Color32::from_gray(160)),
                         );
                     }
 
