@@ -1,8 +1,8 @@
 ; Script di installazione per StampaCP (Inno Setup 6)
-; Compilazione: ISCC.exe installer\StampaCP.iss  ->  dist\StampaCP-1.0.0-setup.exe
+; Compilazione: ISCC.exe installer\StampaCP.iss  ->  dist\StampaCP-2.0.0-setup.exe
 
 #define MyAppName "StampaCP"
-#define MyAppVersion "1.0.0"
+#define MyAppVersion "2.0.0"
 #define MyAppPublisher "Peppe CP"
 #define MyAppURL "https://github.com/gsepp86/StampaCP"
 #define MyAppExe "StampaCP.exe"
