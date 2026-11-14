@@ -136,6 +136,7 @@ impl ModalitaColore {
 
 struct StampaCPApp {
     input_xps: Option<String>,
+    elimina_input_alla_chiusura: bool,
     stampanti_fisiche: Vec<String>,
     destinazione_idx: usize, // 0 = Salva come PDF, 1.. = Stampanti fisiche
     cartella_pdf: String,
@@ -171,7 +172,7 @@ struct StampaCPApp {
 }
 
 impl StampaCPApp {
-    fn new(input_xps: Option<String>) -> Self {
+    fn new(input_xps: Option<String>, elimina_input_alla_chiusura: bool) -> Self {
         let mut stampanti = rileva_stampanti_windows();
         if stampanti.is_empty() {
             stampanti.push("SHARP B/N STANDARD".to_string());
@@ -180,6 +181,7 @@ impl StampaCPApp {
 
         Self {
             input_xps,
+            elimina_input_alla_chiusura,
             stampanti_fisiche: stampanti,
             destinazione_idx: 0,
             cartella_pdf: r"Documenti\Stampe".to_string(),
@@ -210,7 +212,11 @@ impl StampaCPApp {
 
             mostra_info: false,
             mostra_avanzate: false,
-            messaggio_stato: None,
+            messaggio_stato: if elimina_input_alla_chiusura {
+                Some("Lavoro ricevuto dalla coda di stampa.".to_string())
+            } else {
+                None
+            },
             aggiornamento_rx: None,
         }
     }
@@ -324,6 +330,16 @@ impl StampaCPApp {
                 "Lavoro inviato a '{}' ({} copie)",
                 stampante, self.copie
             ));
+        }
+    }
+}
+
+impl Drop for StampaCPApp {
+    fn drop(&mut self) {
+        if self.elimina_input_alla_chiusura {
+            if let Some(path) = &self.input_xps {
+                let _ = std::fs::remove_file(path);
+            }
         }
     }
 }
@@ -964,17 +980,25 @@ impl eframe::App for StampaCPApp {
 fn main() -> ExitCode {
     let args: Vec<String> = env::args().collect();
 
-    if args.len() == 3 {
-        return match xps2pdf::convert_file(&args[1], &args[2]) {
-            Ok(()) => ExitCode::SUCCESS,
-            Err(e) => {
-                eprintln!("Errore: {e}");
-                ExitCode::FAILURE
+    let (input_xps, elimina_input_alla_chiusura) =
+        if args.get(1).map(String::as_str) == Some("--spool-job") {
+            if args.len() != 3 {
+                eprintln!("Uso: StampaCP.exe --spool-job <percorso-lavoro.xps>");
+                return ExitCode::FAILURE;
             }
+            (Some(args[2].clone()), true)
+        } else {
+            if args.len() == 3 {
+                return match xps2pdf::convert_file(&args[1], &args[2]) {
+                    Ok(()) => ExitCode::SUCCESS,
+                    Err(e) => {
+                        eprintln!("Errore: {e}");
+                        ExitCode::FAILURE
+                    }
+                };
+            }
+            (args.get(1).cloned(), false)
         };
-    }
-
-    let input_xps = args.get(1).cloned();
 
     let icon_image =
         image::load_from_memory(include_bytes!(concat!(env!("OUT_DIR"), "/stampacp.ico")))
@@ -998,7 +1022,9 @@ fn main() -> ExitCode {
     match eframe::run_native(
         "StampaCP",
         options,
-        Box::new(move |_cc| Ok(Box::new(StampaCPApp::new(input_xps)))),
+        Box::new(move |_cc| {
+            Ok(Box::new(StampaCPApp::new(input_xps, elimina_input_alla_chiusura)))
+        }),
     ) {
         Ok(()) => ExitCode::SUCCESS,
         Err(_) => ExitCode::FAILURE,
