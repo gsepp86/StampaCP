@@ -7,9 +7,22 @@ Progetto di stampante PDF virtuale ultra-leggera che conserva il testo vettorial
 | Percorso | Ruolo | Stato |
 |---|---|---|
 | `xps2pdf/src/main.rs` | Interfaccia grafica nativa (`egui`) con anteprima, PrintTicket, contrasto/luminosità e selettore stampante fisica | pronto |
-| `xps2pdf/src/lib.rs` | Converte XPS in PDF con testo vettoriale | scheletro (fase 1) |
-| `installer/StampaCP.iss` | Installer Windows (Inno Setup 6) | pronto |
+| `xps2pdf/src/lib.rs` | Conversione XPS→PDF | non implementata |
+| `installer/StampaCP.iss` | Installer Windows (Inno Setup 6), solo GUI | parziale: non installa la stampante virtuale |
 | `anteprima-psa.html` | Prototipo statico di riferimento della UI | riferimento |
+
+## Stato attuale: prototipo, non installare la stampante virtuale
+
+**Questa versione non è ancora pronta per l'installazione o per l'uso quotidiano come stampante Windows.** L'installer Inno Setup presente nel repository copia soltanto `StampaCP.exe`: non registra il Port Monitor, non crea una porta e non crea una coda di stampa. La DLL nativa è un prototipo di sviluppo e non deve essere registrata manualmente nello spooler di Windows.
+
+Prima di abilitare l'installazione servono almeno:
+- definire e verificare una combinazione driver/print path supportata da Windows 10 LTSC x64;
+- completare la registrazione e la rimozione della porta, con gestione persistente e corretta delle code;
+- implementare la lettura del pacchetto XPS e la conversione XPS→PDF;
+- sostituire l'anteprima dimostrativa con il rendering del documento ricevuto;
+- eseguire test end-to-end su una macchina Windows dedicata, inclusi installazione, stampa, riavvio dello spooler e disinstallazione.
+
+**Non creare manualmente una coda che punti a questa DLL e non copiare la DLL nelle cartelle di sistema.** I test correnti di CI verificano compilazione e test automatici, non certificano il funzionamento della pipeline di stampa reale.
 
 ## Uso da riga di comando
 
