@@ -222,10 +222,7 @@ impl StampaCPApp {
             let idx = self.destinazione_idx - 1;
             format!(
                 "Stampante fisica: {}",
-                self.stampanti_fisiche
-                    .get(idx)
-                    .cloned()
-                    .unwrap_or_default()
+                self.stampanti_fisiche.get(idx).cloned().unwrap_or_default()
             )
         }
     }
@@ -455,7 +452,9 @@ impl eframe::App for StampaCPApp {
                 .collapsible(false)
                 .default_size([460.0, 360.0])
                 .show(ctx, |ui| {
-                    egui::ScrollArea::vertical().max_height(280.0).show(ui, |ui| {
+                    egui::ScrollArea::vertical()
+                        .max_height(280.0)
+                        .show(ui, |ui| {
                         let xml = self.genera_print_ticket_xml();
                         ui.add(
                             egui::TextEdit::multiline(&mut xml.as_str())
