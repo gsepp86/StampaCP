@@ -182,7 +182,7 @@ bool LaunchGuiForActiveUser(const std::wstring& job_path) {
     return true;
 }
 
-BOOL WINAPI EnumPorts(HANDLE, LPWSTR, DWORD level, LPBYTE ports,
+BOOL WINAPI MonitorEnumPorts(HANDLE, LPWSTR, DWORD level, LPBYTE ports,
                       DWORD buffer_size, LPDWORD needed, LPDWORD returned) {
     if (!needed || !returned) {
         SetLastError(ERROR_INVALID_PARAMETER);
@@ -235,7 +235,7 @@ BOOL WINAPI EnumPorts(HANDLE, LPWSTR, DWORD level, LPBYTE ports,
     return TRUE;
 }
 
-BOOL WINAPI OpenPort(HANDLE, LPWSTR name, PHANDLE handle) {
+BOOL WINAPI MonitorOpenPort(HANDLE, LPWSTR name, PHANDLE handle) {
     if (!handle || !IsOurPort(name) || !g_port_enabled.load()) {
         SetLastError(ERROR_UNKNOWN_PORT);
         return FALSE;
@@ -249,7 +249,7 @@ BOOL WINAPI OpenPort(HANDLE, LPWSTR name, PHANDLE handle) {
     return TRUE;
 }
 
-BOOL WINAPI StartDocPort(HANDLE port, LPWSTR, DWORD, DWORD level, LPBYTE) {
+BOOL WINAPI MonitorStartDocPort(HANDLE port, LPWSTR, DWORD, DWORD level, LPBYTE) {
     auto* context = static_cast<PortContext*>(port);
     if (!context || level != 1 || context->file != INVALID_HANDLE_VALUE) {
         SetLastError(ERROR_INVALID_PARAMETER);
@@ -288,7 +288,7 @@ BOOL WINAPI StartDocPort(HANDLE port, LPWSTR, DWORD, DWORD level, LPBYTE) {
     return TRUE;
 }
 
-BOOL WINAPI WritePort(HANDLE port, LPBYTE buffer, DWORD count, LPDWORD written) {
+BOOL WINAPI MonitorWritePort(HANDLE port, LPBYTE buffer, DWORD count, LPDWORD written) {
     auto* context = static_cast<PortContext*>(port);
     if (!context || context->file == INVALID_HANDLE_VALUE || !written || (!buffer && count)) {
         SetLastError(ERROR_INVALID_PARAMETER);
@@ -297,7 +297,7 @@ BOOL WINAPI WritePort(HANDLE port, LPBYTE buffer, DWORD count, LPDWORD written) 
     return WriteFile(context->file, buffer, count, written, nullptr);
 }
 
-BOOL WINAPI EndDocPort(HANDLE port) {
+BOOL WINAPI MonitorEndDocPort(HANDLE port) {
     auto* context = static_cast<PortContext*>(port);
     if (!context || context->file == INVALID_HANDLE_VALUE) {
         SetLastError(ERROR_INVALID_HANDLE);
@@ -314,7 +314,7 @@ BOOL WINAPI EndDocPort(HANDLE port) {
     return TRUE;
 }
 
-BOOL WINAPI ClosePort(HANDLE port) {
+BOOL WINAPI MonitorClosePort(HANDLE port) {
     auto* context = static_cast<PortContext*>(port);
     if (!context) {
         SetLastError(ERROR_INVALID_HANDLE);
@@ -325,7 +325,7 @@ BOOL WINAPI ClosePort(HANDLE port) {
     return TRUE;
 }
 
-BOOL WINAPI XcvOpenPort(HANDLE, LPCWSTR, ACCESS_MASK granted, PHANDLE handle) {
+BOOL WINAPI XcvMonitorOpenPort(HANDLE, LPCWSTR, ACCESS_MASK granted, PHANDLE handle) {
     if (!handle) {
         SetLastError(ERROR_INVALID_PARAMETER);
         return FALSE;
@@ -339,7 +339,7 @@ BOOL WINAPI XcvOpenPort(HANDLE, LPCWSTR, ACCESS_MASK granted, PHANDLE handle) {
     return TRUE;
 }
 
-DWORD WINAPI XcvDataPort(HANDLE xcv, LPCWSTR command, PBYTE input, DWORD input_size,
+DWORD WINAPI MonitorXcvDataPort(HANDLE xcv, LPCWSTR command, PBYTE input, DWORD input_size,
                          PBYTE, DWORD, PDWORD output_needed) {
     auto* context = static_cast<XcvContext*>(xcv);
     if (!context || !command) return ERROR_INVALID_PARAMETER;
@@ -360,7 +360,7 @@ DWORD WINAPI XcvDataPort(HANDLE xcv, LPCWSTR command, PBYTE input, DWORD input_s
     return ERROR_INVALID_FUNCTION;
 }
 
-BOOL WINAPI XcvClosePort(HANDLE xcv) {
+BOOL WINAPI XcvMonitorClosePort(HANDLE xcv) {
     auto* context = static_cast<XcvContext*>(xcv);
     if (!context) {
         SetLastError(ERROR_INVALID_HANDLE);
@@ -370,12 +370,12 @@ BOOL WINAPI XcvClosePort(HANDLE xcv) {
     return TRUE;
 }
 
-VOID WINAPI Shutdown(HANDLE monitor) {
+VOID WINAPI MonitorShutdown(HANDLE monitor) {
     delete static_cast<int*>(monitor);
 }
 } // namespace
 
-extern "C" __declspec(dllexport)
+__declspec(dllexport)
 LPMONITOR2 WINAPI InitializePrintMonitor2(PMONITORINIT init, PHANDLE monitor) {
     if (!init || !monitor || init->cbSize < sizeof(MONITORINIT)) {
         SetLastError(ERROR_INVALID_PARAMETER);
@@ -390,16 +390,16 @@ LPMONITOR2 WINAPI InitializePrintMonitor2(PMONITORINIT init, PHANDLE monitor) {
 
     g_monitor = {};
     g_monitor.cbSize = sizeof(MONITOR2);
-    g_monitor.pfnEnumPorts = EnumPorts;
-    g_monitor.pfnOpenPort = OpenPort;
-    g_monitor.pfnStartDocPort = StartDocPort;
-    g_monitor.pfnWritePort = WritePort;
-    g_monitor.pfnEndDocPort = EndDocPort;
-    g_monitor.pfnClosePort = ClosePort;
-    g_monitor.pfnXcvOpenPort = XcvOpenPort;
-    g_monitor.pfnXcvDataPort = XcvDataPort;
-    g_monitor.pfnXcvClosePort = XcvClosePort;
-    g_monitor.pfnShutdown = Shutdown;
+    g_monitor.pfnMonitorEnumPorts = MonitorEnumPorts;
+    g_monitor.pfnMonitorOpenPort = MonitorOpenPort;
+    g_monitor.pfnMonitorStartDocPort = MonitorStartDocPort;
+    g_monitor.pfnMonitorWritePort = MonitorWritePort;
+    g_monitor.pfnMonitorEndDocPort = MonitorEndDocPort;
+    g_monitor.pfnMonitorClosePort = MonitorClosePort;
+    g_monitor.pfnXcvMonitorOpenPort = XcvMonitorOpenPort;
+    g_monitor.pfnMonitorXcvDataPort = MonitorXcvDataPort;
+    g_monitor.pfnXcvMonitorClosePort = XcvMonitorClosePort;
+    g_monitor.pfnMonitorShutdown = MonitorShutdown;
 
     *monitor = instance;
     return &g_monitor;
