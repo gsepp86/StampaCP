@@ -625,7 +625,13 @@ impl eframe::App for StampaCPApp {
                     ui.set_width(ui.available_width());
                     ui.label(egui::RichText::new("Stampante").color(danger).strong());
                     ui.label(format!("Driver selezionato: {}", self.driver_corrente_label()));
-                    ui.label(format!("Stampanti Windows rilevate: {}", self.stampanti_fisiche.len())).small();
+                    ui.label(
+                        egui::RichText::new(format!(
+                            "Stampanti Windows rilevate: {}",
+                            self.stampanti_fisiche.len()
+                        ))
+                        .small(),
+                    );
                     ui.add_space(3.0);
                     ui.horizontal(|ui| {
                         ui.label("Copie:");
