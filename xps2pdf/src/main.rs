@@ -331,20 +331,20 @@ fn disegna_icona_stampante(ui: &mut egui::Ui, accent: egui::Color32) {
 
     let paper = egui::Rect::from_min_size(rect.min + egui::vec2(8.0, 1.0), egui::vec2(14.0, 11.0));
     painter.rect_filled(paper, 2.0, egui::Color32::WHITE);
-    painter.rect_stroke(paper, 2.0, egui::Stroke::new(1.2, accent));
+    painter.rect_stroke(paper, 2.0, egui::Stroke::new(1.2_f32, accent));
 
     let body = egui::Rect::from_min_size(rect.min + egui::vec2(2.0, 8.0), egui::vec2(26.0, 13.0));
     painter.rect_filled(body, 3.0, accent);
 
     let tray = egui::Rect::from_min_size(rect.min + egui::vec2(7.0, 16.0), egui::vec2(16.0, 9.0));
     painter.rect_filled(tray, 1.5, egui::Color32::WHITE);
-    painter.rect_stroke(tray, 1.5, egui::Stroke::new(1.2, accent));
+    painter.rect_stroke(tray, 1.5, egui::Stroke::new(1.2_f32, accent));
     painter.line_segment(
         [
             tray.left_top() + egui::vec2(3.0, 3.0),
             tray.right_top() + egui::vec2(-3.0, 3.0),
         ],
-        egui::Stroke::new(1.0, egui::Color32::from_gray(150)),
+        egui::Stroke::new(1.0_f32, egui::Color32::from_gray(150)),
     );
 }
 
