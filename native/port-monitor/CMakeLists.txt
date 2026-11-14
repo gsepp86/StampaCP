@@ -7,7 +7,8 @@ endif()
 
 add_library(StampaCPMonitor SHARED port_monitor.cpp)
 target_compile_features(StampaCPMonitor PRIVATE cxx_std_17)
-target_compile_definitions(StampaCPMonitor PRIVATE UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
+target_compile_definitions(StampaCPMonitor PRIVATE UNICODE _UNICODE)
+target_sources(StampaCPMonitor PRIVATE StampaCPMonitor.def)
 target_link_libraries(StampaCPMonitor PRIVATE Advapi32 Userenv Wtsapi32)
 set_target_properties(StampaCPMonitor PROPERTIES
   OUTPUT_NAME "StampaCPMonitor"
