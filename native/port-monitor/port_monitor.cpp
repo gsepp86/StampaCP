@@ -225,8 +225,6 @@ BOOL WINAPI EnumPorts(HANDLE, LPWSTR, DWORD level, LPBYTE ports,
         cursor += monitor_bytes;
         auto* description = reinterpret_cast<LPWSTR>(cursor);
         memcpy(description, kMonitorName, monitor_bytes);
-        info->pServerName = nullptr;
-        info->pPrinterName = nullptr;
         info->pPortName = port_name;
         info->pMonitorName = monitor_name;
         info->pDescription = description;
@@ -327,7 +325,7 @@ BOOL WINAPI ClosePort(HANDLE port) {
     return TRUE;
 }
 
-BOOL WINAPI XcvOpenPort(LPCWSTR, ACCESS_MASK granted, PHANDLE handle) {
+BOOL WINAPI XcvOpenPort(HANDLE, LPCWSTR, ACCESS_MASK granted, PHANDLE handle) {
     if (!handle) {
         SetLastError(ERROR_INVALID_PARAMETER);
         return FALSE;
