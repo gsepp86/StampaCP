@@ -9,6 +9,8 @@
 #include <sddl.h>
 
 #include <atomic>
+#include <cstring>
+#include <cwchar>
 #include <cstddef>
 #include <new>
 #include <string>
