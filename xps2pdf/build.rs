@@ -17,6 +17,8 @@ fn main() {
     {
         let mut resource = winres::WindowsResource::new();
         resource.set_icon(icon_path.to_str().expect("percorso icona non valido"));
-        resource.compile().expect("impossibile incorporare l'icona in StampaCP.exe");
+        resource
+            .compile()
+            .expect("impossibile incorporare l'icona in StampaCP.exe");
     }
 }
