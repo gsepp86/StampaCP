@@ -12,7 +12,11 @@ path = "src/main.rs"
 
 [dependencies]
 eframe = "0.29"
-image = { version = "0.25", default-features = false, features = ["ico", "png"] }
+flate2 = "1"
+image = { version = "0.25", default-features = false, features = ["ico", "png", "jpeg"] }
+quick-xml = "0.36"
+ttf-parser = "0.24"
+zip = { version = "2", default-features = false, features = ["deflate"] }
 
 [build-dependencies]
 base64 = "0.22"

@@ -8,14 +8,32 @@
 //!   StampaCP                            -> Apre la finestra nativa di anteprima/configurazione
 
 use eframe::egui;
+use std::collections::HashMap;
 use std::env;
+use std::fs;
+use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
-use std::sync::mpsc::Receiver;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::mpsc::{Receiver, Sender};
+use std::sync::Arc;
 use std::thread;
+use std::time::Duration;
 
 const VERSIONE: &str = "2.0.0";
 const GITHUB: &str = "https://github.com/gsepp86/StampaCP";
 const PAYPAL: &str = "https://paypal.me/PeppeCP";
+
+/// Evento inviato dal sorvegliante della cartella di transito.
+enum EventoCoda {
+    Creato(String),
+    Errore(String),
+}
+
+/// Sorvegliante attivo sulla cartella di transito.
+struct CodaAttiva {
+    cartella: String,
+    attivo: Arc<AtomicBool>,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum FormatoCarta {
@@ -168,6 +186,12 @@ struct StampaCPApp {
     mostra_avanzate: bool,
     messaggio_stato: Option<String>,
     aggiornamento_rx: Option<Receiver<String>>,
+
+    cartella_coda: String,
+    coda_attiva: bool,
+    coda_rx: Option<Receiver<EventoCoda>>,
+    coda_thread: Option<CodaAttiva>,
+    ultimo_pdf: Option<String>,
 }
 
 impl StampaCPApp {
@@ -178,11 +202,16 @@ impl StampaCPApp {
             stampanti.push("Stampante di rete (ufficio)".to_string());
         }
 
-        Self {
+        let cartella_pdf = format!(r"{}\Stampe", cartella_documenti());
+        let _ = fs::create_dir_all(&cartella_pdf);
+        let cartella_coda = format!(r"{}\StampaCP\Coda", cartella_dati_locali());
+        let _ = fs::create_dir_all(&cartella_coda);
+
+        let mut app = Self {
             input_xps,
             stampanti_fisiche: stampanti,
             destinazione_idx: 0,
-            cartella_pdf: r"Documenti\Stampe".to_string(),
+            cartella_pdf,
             nome_file_pdf: "Documento_StampaCP.pdf".to_string(),
 
             copie: 1,
@@ -212,7 +241,18 @@ impl StampaCPApp {
             mostra_avanzate: false,
             messaggio_stato: None,
             aggiornamento_rx: None,
-        }
+
+            cartella_coda,
+            coda_attiva: true,
+            coda_rx: None,
+            coda_thread: None,
+            ultimo_pdf: None,
+        };
+
+        // Un lavoro XPS ricevuto dalla stampante virtuale viene convertito
+        // subito, senza costringere l'utente a premere «Salva PDF».
+        app.converti_ingresso_iniziale();
+        app
     }
 
     fn is_pdf(&self) -> bool {
@@ -223,12 +263,75 @@ impl StampaCPApp {
         if self.destinazione_idx == 0 {
             "Salva come PDF (testo vettoriale)".to_string()
         } else {
-            let idx = self.destinazione_idx - 1;
-            format!(
-                "Stampante fisica: {}",
-                self.stampanti_fisiche.get(idx).cloned().unwrap_or_default()
-            )
+            // Solo il nome: l'etichetta è la più lunga della finestra, che si
+            // allarga in base alla stampante selezionabile più lunga.
+            self.stampanti_fisiche
+                .get(self.destinazione_idx - 1)
+                .cloned()
+                .unwrap_or_default()
         }
+    }
+
+    /// Larghezza della finestra necessaria a mostrare per intero il nome della
+    /// stampante più lunga nella tendina «Destinazione».
+    fn larghezza_preferita(&self) -> f32 {
+        let caratteri = self
+            .stampanti_fisiche
+            .iter()
+            .map(|nome| nome.chars().count())
+            .max()
+            .unwrap_or(0)
+            .max("Salva come PDF (testo vettoriale)".chars().count());
+        let colonna = (caratteri as f32 * 7.4 + 90.0).clamp(300.0, 560.0);
+        (colonna * 3.0 + 36.0).clamp(1000.0, 1500.0)
+    }
+
+    /// Converte il file XPS ricevuto all'avvio nella cartella PDF configurata.
+    fn converti_ingresso_iniziale(&mut self) {
+        let Some(ingresso) = self.input_xps.clone() else {
+            return;
+        };
+        let uscita = percorso_pdf_automatico(&self.cartella_pdf, &ingresso);
+        match xps2pdf::convert_file(&ingresso, &uscita) {
+            Ok(()) => {
+                self.ultimo_pdf = Some(uscita.clone());
+                self.messaggio_stato = Some(format!("PDF creato: {uscita}"));
+            }
+            Err(errore) => {
+                self.messaggio_stato = Some(format!("Conversione non riuscita: {errore}"));
+            }
+        }
+    }
+
+    /// Avvia o ferma il sorvegliante della cartella di transito secondo le
+    /// impostazioni correnti.
+    fn aggiorna_coda(&mut self) {
+        let cartella = self.cartella_coda.trim().to_string();
+        if !self.coda_attiva || cartella.is_empty() {
+            self.ferma_coda();
+            return;
+        }
+        if let Some(attiva) = &self.coda_thread {
+            if attiva.cartella == cartella {
+                return;
+            }
+        }
+        self.ferma_coda();
+        let uscita = self.cartella_pdf.trim().to_string();
+        let attivo = Arc::new(AtomicBool::new(true));
+        let (tx, rx) = std::sync::mpsc::channel();
+        let flag = Arc::clone(&attivo);
+        let cartella_thread = cartella.clone();
+        thread::spawn(move || sorveglia_coda(cartella_thread, uscita, flag, tx));
+        self.coda_rx = Some(rx);
+        self.coda_thread = Some(CodaAttiva { cartella, attivo });
+    }
+
+    fn ferma_coda(&mut self) {
+        if let Some(attiva) = self.coda_thread.take() {
+            attiva.attivo.store(false, Ordering::Relaxed);
+        }
+        self.coda_rx = None;
     }
 
     fn genera_print_ticket_xml(&self) -> String {
@@ -305,10 +408,15 @@ impl StampaCPApp {
 
     fn esegui_azione(&mut self) {
         if self.is_pdf() {
-            let out = format!(r"{}\{}", self.cartella_pdf, self.nome_file_pdf);
+            let out = format!(
+                r"{}\{}",
+                self.cartella_pdf.trim_end_matches('\\'),
+                self.nome_file_pdf
+            );
             if let Some(ref xps) = self.input_xps {
                 match xps2pdf::convert_file(xps, &out) {
                     Ok(()) => {
+                        self.ultimo_pdf = Some(out.clone());
                         self.messaggio_stato = Some(format!("PDF salvato in: {out}"));
                     }
                     Err(e) => {
@@ -373,6 +481,7 @@ fn controlla_aggiornamenti() -> String {
     }
 }
 
+#[cfg(target_os = "windows")]
 fn versione_nuova(disponibile: &str, corrente: &str) -> bool {
     fn numeri(versione: &str) -> Vec<u64> {
         versione
@@ -429,6 +538,155 @@ fn rileva_stampanti_windows() -> Vec<String> {
     Vec::new()
 }
 
+/// Cartella Documenti dell'utente corrente.
+fn cartella_documenti() -> String {
+    if let Ok(profilo) = env::var("USERPROFILE") {
+        return Path::new(&profilo)
+            .join("Documents")
+            .to_string_lossy()
+            .to_string();
+    }
+    env::current_dir()
+        .map(|cartella| cartella.to_string_lossy().to_string())
+        .unwrap_or_else(|_| ".".to_string())
+}
+
+/// Cartella dati locali dell'applicazione.
+fn cartella_dati_locali() -> String {
+    if let Ok(appdata) = env::var("LOCALAPPDATA") {
+        return appdata;
+    }
+    if let Ok(profilo) = env::var("USERPROFILE") {
+        return Path::new(&profilo)
+            .join("AppData")
+            .join("Local")
+            .to_string_lossy()
+            .to_string();
+    }
+    env::temp_dir().to_string_lossy().to_string()
+}
+
+/// Nome PDF libero nella cartella di uscita, derivato dal file XPS ricevuto.
+fn percorso_pdf_automatico(cartella: &str, sorgente: &str) -> String {
+    let _ = fs::create_dir_all(cartella);
+    let cartella = Path::new(cartella);
+    let base = Path::new(sorgente)
+        .file_stem()
+        .and_then(|nome| nome.to_str())
+        .filter(|nome| !nome.trim().is_empty())
+        .unwrap_or("Documento");
+    let mut candidato = cartella.join(format!("{base}.pdf"));
+    let mut indice = 2;
+    while candidato.exists() && indice < 1000 {
+        candidato = cartella.join(format!("{base}-{indice}.pdf"));
+        indice += 1;
+    }
+    candidato.to_string_lossy().to_string()
+}
+
+/// Converte in PDF ogni file XPS che compare nella cartella di transito.
+fn sorveglia_coda(
+    cartella: String,
+    uscita: String,
+    attivo: Arc<AtomicBool>,
+    tx: Sender<EventoCoda>,
+) {
+    let cartella = PathBuf::from(cartella);
+    let _ = fs::create_dir_all(&cartella);
+    let mut dimensioni: HashMap<PathBuf, u64> = HashMap::new();
+    let mut tentativi: HashMap<PathBuf, u32> = HashMap::new();
+
+    while attivo.load(Ordering::Relaxed) {
+        if let Ok(voci) = fs::read_dir(&cartella) {
+            for voce in voci.flatten() {
+                let percorso = voce.path();
+                if !percorso.is_file() {
+                    continue;
+                }
+                let estensione = percorso
+                    .extension()
+                    .and_then(|valore| valore.to_str())
+                    .unwrap_or_default()
+                    .to_ascii_lowercase();
+                if estensione != "xps" && estensione != "oxps" {
+                    continue;
+                }
+                let dimensione = voce.metadata().map(|meta| meta.len()).unwrap_or(0);
+                if dimensione == 0 {
+                    continue;
+                }
+                // Attende che il driver abbia finito di scrivere il file.
+                if dimensioni.get(&percorso) != Some(&dimensione) {
+                    dimensioni.insert(percorso.clone(), dimensione);
+                    tentativi.insert(percorso.clone(), 0);
+                    continue;
+                }
+                let sorgente = percorso.to_string_lossy().to_string();
+                let destinazione = percorso_pdf_automatico(&uscita, &sorgente);
+                match xps2pdf::convert_file(&sorgente, &destinazione) {
+                    Ok(()) => {
+                        let _ = fs::remove_file(&percorso);
+                        dimensioni.remove(&percorso);
+                        tentativi.remove(&percorso);
+                        if tx.send(EventoCoda::Creato(destinazione)).is_err() {
+                            return;
+                        }
+                    }
+                    Err(errore) => {
+                        let conteggio = tentativi.entry(percorso.clone()).or_insert(0);
+                        *conteggio += 1;
+                        if *conteggio >= 4 {
+                            let scarti = cartella.join("Errori");
+                            let _ = fs::create_dir_all(&scarti);
+                            let nome = percorso
+                                .file_name()
+                                .map(|n| n.to_os_string())
+                                .unwrap_or_default();
+                            let _ = fs::rename(&percorso, scarti.join(nome));
+                            dimensioni.remove(&percorso);
+                            tentativi.remove(&percorso);
+                            let dettaglio = format!("{}: {errore}", percorso.display());
+                            if tx.send(EventoCoda::Errore(dettaglio)).is_err() {
+                                return;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        thread::sleep(Duration::from_millis(1200));
+    }
+}
+
+/// Apre un file con l'applicazione associata dal sistema operativo.
+fn apri_file(percorso: &str) {
+    #[cfg(target_os = "windows")]
+    {
+        let _ = Command::new("cmd")
+            .args(["/C", "start", "", percorso])
+            .spawn();
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = Command::new("xdg-open").arg(percorso).spawn();
+    }
+}
+
+/// Registra un errore di conversione nel log dell'applicazione.
+fn registra_errore(messaggio: &str) {
+    eprintln!("{messaggio}");
+    use std::io::Write;
+    let cartella = format!(r"{}\StampaCP", cartella_dati_locali());
+    let _ = fs::create_dir_all(&cartella);
+    if let Ok(mut file) = fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(Path::new(&cartella).join("StampaCP.log"))
+    {
+        let _ = writeln!(file, "{messaggio}");
+    }
+}
+
 impl eframe::App for StampaCPApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         let accent = egui::Color32::from_rgb(42, 111, 214);
@@ -454,6 +712,28 @@ impl eframe::App for StampaCPApp {
                 self.messaggio_stato = Some(messaggio);
                 self.aggiornamento_rx = None;
             }
+        }
+
+        // Lavori XPS convertiti dal sorvegliante della cartella di transito.
+        let mut eventi_coda = Vec::new();
+        if let Some(rx) = &self.coda_rx {
+            while let Ok(evento) = rx.try_recv() {
+                eventi_coda.push(evento);
+            }
+        }
+        for evento in eventi_coda {
+            match evento {
+                EventoCoda::Creato(percorso) => {
+                    self.ultimo_pdf = Some(percorso.clone());
+                    self.messaggio_stato = Some(format!("PDF creato: {percorso}"));
+                }
+                EventoCoda::Errore(dettaglio) => {
+                    self.messaggio_stato = Some(format!("Lavoro non convertito: {dettaglio}"));
+                }
+            }
+        }
+        if self.coda_rx.is_some() {
+            ctx.request_repaint_after(Duration::from_millis(800));
         }
 
         // La stessa icona di StampaCP è incorporata nell'eseguibile e nella finestra.
@@ -505,6 +785,12 @@ impl eframe::App for StampaCPApp {
                     } else {
                         self.messaggio_stato =
                             Some("Nessuna nuova stampante rilevata dal sistema.".to_string());
+                    }
+                }
+
+                if let Some(percorso) = self.ultimo_pdf.clone() {
+                    if ui.small_button("Apri PDF").clicked() {
+                        apri_file(&percorso);
                     }
                 }
 
@@ -668,11 +954,7 @@ impl eframe::App for StampaCPApp {
                                 "Salva come PDF (testo vettoriale)",
                             );
                             for (i, sp) in self.stampanti_fisiche.iter().enumerate() {
-                                ui.selectable_value(
-                                    &mut self.destinazione_idx,
-                                    i + 1,
-                                    format!("Stampante fisica: {sp}"),
-                                );
+                                ui.selectable_value(&mut self.destinazione_idx, i + 1, sp.as_str());
                             }
                         });
 
@@ -694,6 +976,26 @@ impl eframe::App for StampaCPApp {
                         "Il lavoro viene inoltrato alla coda della stampante fisica selezionata."
                     };
                     ui.label(egui::RichText::new(note).small().weak());
+
+                    ui.add_space(4.0);
+                    ui.separator();
+                    ui.checkbox(&mut self.coda_attiva, "Converti i lavori XPS in arrivo");
+                    ui.add_enabled_ui(self.coda_attiva, |ui| {
+                        ui.horizontal(|ui| {
+                            ui.label("In arrivo:");
+                            ui.add(
+                                egui::TextEdit::singleline(&mut self.cartella_coda)
+                                    .desired_width(f32::INFINITY),
+                            );
+                        });
+                        ui.label(
+                            egui::RichText::new(
+                                "Ogni file XPS copiato qui viene convertito in PDF e rimosso dalla coda.",
+                            )
+                            .small()
+                            .weak(),
+                        );
+                    });
                 });
 
                 cols[0].add_space(6.0);
@@ -958,23 +1260,53 @@ impl eframe::App for StampaCPApp {
                 });
             });
         });
+
+        // Riallinea il sorvegliante alla cartella eventualmente modificata.
+        self.aggiorna_coda();
     }
 }
 
 fn main() -> ExitCode {
     let args: Vec<String> = env::args().collect();
+    let silenzioso = args
+        .iter()
+        .skip(1)
+        .any(|argomento| argomento == "--silenzioso" || argomento == "--silent");
+    let posizionali: Vec<String> = args
+        .iter()
+        .skip(1)
+        .filter(|argomento| !argomento.starts_with("--"))
+        .cloned()
+        .collect();
 
-    if args.len() == 3 {
-        return match xps2pdf::convert_file(&args[1], &args[2]) {
+    if posizionali.len() >= 2 {
+        return match xps2pdf::convert_file(&posizionali[0], &posizionali[1]) {
             Ok(()) => ExitCode::SUCCESS,
             Err(e) => {
-                eprintln!("Errore: {e}");
+                registra_errore(&format!("Conversione di {}: {e}", posizionali[0]));
                 ExitCode::FAILURE
             }
         };
     }
 
-    let input_xps = args.get(1).cloned();
+    let input_xps = posizionali.first().cloned();
+
+    // Stampa da stampante virtuale senza aprire la finestra.
+    if silenzioso {
+        let Some(ingresso) = input_xps else {
+            registra_errore("Modalità silenziosa senza file XPS di ingresso.");
+            return ExitCode::FAILURE;
+        };
+        let uscita =
+            percorso_pdf_automatico(&format!(r"{}\Stampe", cartella_documenti()), &ingresso);
+        return match xps2pdf::convert_file(&ingresso, &uscita) {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(e) => {
+                registra_errore(&format!("Conversione di {ingresso}: {e}"));
+                ExitCode::FAILURE
+            }
+        };
+    }
 
     let icon_image =
         image::load_from_memory(include_bytes!(concat!(env!("OUT_DIR"), "/stampacp.ico")))
@@ -986,20 +1318,20 @@ fn main() -> ExitCode {
         rgba: icon_image.into_raw(),
     };
 
+    let app = StampaCPApp::new(input_xps);
+    // La finestra parte già larga quanto serve al nome della stampante più lunga.
+    let larghezza = app.larghezza_preferita();
+
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_inner_size([900.0, 610.0])
-            .with_min_inner_size([760.0, 500.0])
+            .with_inner_size([larghezza, 660.0])
+            .with_min_inner_size([980.0, 540.0])
             .with_title("StampaCP - Stampante Virtuale")
             .with_icon(std::sync::Arc::new(icon)),
         ..Default::default()
     };
 
-    match eframe::run_native(
-        "StampaCP",
-        options,
-        Box::new(move |_cc| Ok(Box::new(StampaCPApp::new(input_xps)))),
-    ) {
+    match eframe::run_native("StampaCP", options, Box::new(move |_cc| Ok(Box::new(app)))) {
         Ok(()) => ExitCode::SUCCESS,
         Err(_) => ExitCode::FAILURE,
     }
