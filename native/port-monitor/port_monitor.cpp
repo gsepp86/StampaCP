@@ -2,7 +2,11 @@
 #define NOMINMAX
 #include <windows.h>
 #include <winspool.h>
+// winsplp.h declares the monitor entry point with C++ linkage. Rename that
+// declaration so this DLL can export the required undecorated C symbol.
+#define InitializePrintMonitor2 StampaCPHeaderInitializePrintMonitor2
 #include <winsplp.h>
+#undef InitializePrintMonitor2
 #include <wtsapi32.h>
 #include <userenv.h>
 #include <aclapi.h>
@@ -375,7 +379,7 @@ VOID WINAPI MonitorShutdown(HANDLE monitor) {
 }
 } // namespace
 
-__declspec(dllexport)
+extern "C" __declspec(dllexport)
 LPMONITOR2 WINAPI InitializePrintMonitor2(PMONITORINIT init, PHANDLE monitor) {
     if (!init || !monitor || init->cbSize < sizeof(MONITORINIT)) {
         SetLastError(ERROR_INVALID_PARAMETER);
