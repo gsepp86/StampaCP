@@ -16,3 +16,13 @@ Progetto di stampante PDF virtuale ultra-leggera che conserva il testo vettorial
 - `StampaCP.exe` — Apre la finestra nativa di anteprima e gestione stampa.
 - `StampaCP.exe <input.xps>` — Apre la finestra nativa caricando il lavoro XPS intercettato.
 - `StampaCP.exe <input.xps> <output.pdf>` — Converte direttamente da CLI senza interfaccia grafica.
+
+
+## Configurazione e Installazione su Windows
+
+Poiché **StampaCP** sfrutta i driver di stampa nativi e firmati di Windows (evitando la necessità di certificati kernel EV costosi o modalità di test disattivate), la configurazione richiede di associare la stampante virtuale a un driver standard e di puntarla al nostro eseguibile tramite un Port Monitor o una cartella di transito.
+
+### 1. Installazione tramite Installer (Consigliato)
+1. Compila lo script Inno Setup per generare l'eseguibile di installazione:
+   ```cmd
+   ISCC.exe installer\StampaCP.iss
