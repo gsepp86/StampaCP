@@ -394,16 +394,16 @@ LPMONITOR2 WINAPI InitializePrintMonitor2(PMONITORINIT init, PHANDLE monitor) {
 
     g_monitor = {};
     g_monitor.cbSize = sizeof(MONITOR2);
-    g_monitor.pfnMonitorEnumPorts = MonitorEnumPorts;
-    g_monitor.pfnMonitorOpenPort = MonitorOpenPort;
-    g_monitor.pfnMonitorStartDocPort = MonitorStartDocPort;
-    g_monitor.pfnMonitorWritePort = MonitorWritePort;
-    g_monitor.pfnMonitorEndDocPort = MonitorEndDocPort;
-    g_monitor.pfnMonitorClosePort = MonitorClosePort;
-    g_monitor.pfnXcvMonitorOpenPort = XcvMonitorOpenPort;
-    g_monitor.pfnMonitorXcvDataPort = MonitorXcvDataPort;
-    g_monitor.pfnXcvMonitorClosePort = XcvMonitorClosePort;
-    g_monitor.pfnMonitorShutdown = MonitorShutdown;
+    g_monitor.pfnEnumPorts = MonitorEnumPorts;
+    g_monitor.pfnOpenPort = MonitorOpenPort;
+    g_monitor.pfnStartDocPort = MonitorStartDocPort;
+    g_monitor.pfnWritePort = MonitorWritePort;
+    g_monitor.pfnEndDocPort = MonitorEndDocPort;
+    g_monitor.pfnClosePort = MonitorClosePort;
+    g_monitor.pfnXcvOpenPort = XcvMonitorOpenPort;
+    g_monitor.pfnXcvDataPort = MonitorXcvDataPort;
+    g_monitor.pfnXcvClosePort = XcvMonitorClosePort;
+    g_monitor.pfnShutdown = MonitorShutdown;
 
     *monitor = instance;
     return &g_monitor;
