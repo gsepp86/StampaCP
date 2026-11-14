@@ -455,13 +455,13 @@ impl eframe::App for StampaCPApp {
                     egui::ScrollArea::vertical()
                         .max_height(280.0)
                         .show(ui, |ui| {
-                        let xml = self.genera_print_ticket_xml();
-                        ui.add(
-                            egui::TextEdit::multiline(&mut xml.as_str())
-                                .font(egui::TextStyle::Monospace)
-                                .desired_width(f32::INFINITY),
-                        );
-                    });
+                            let xml = self.genera_print_ticket_xml();
+                            ui.add(
+                                egui::TextEdit::multiline(&mut xml.as_str())
+                                    .font(egui::TextStyle::Monospace)
+                                    .desired_width(f32::INFINITY),
+                            );
+                        });
                     ui.add_space(6.0);
                     if ui.button("Chiudi").clicked() {
                         self.mostra_avanzate = false;
