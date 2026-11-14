@@ -16,6 +16,7 @@ image = { version = "0.25", default-features = false, features = ["ico", "png"] 
 
 [build-dependencies]
 base64 = "0.22"
+image = { version = "0.25", default-features = false, features = ["ico", "png"] }
 
 [target.'cfg(windows)'.build-dependencies]
 winres = "0.1"
