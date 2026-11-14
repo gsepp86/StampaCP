@@ -28,7 +28,7 @@ jobs:
 
       - name: Build native print monitor (x64)
         run: |
-          cmake -S native/port-monitor -B build/port-monitor -G "Visual Studio 17 2022" -A x64
+          cmake -S native/port-monitor -B build/port-monitor -A x64
           cmake --build build/port-monitor --config Release
 
       - name: Check formatting
