@@ -324,6 +324,36 @@ impl StampaCPApp {
     }
 }
 
+/// Disegna una piccola icona vettoriale della stampante, senza immagini o dipendenze esterne.
+fn disegna_icona_stampante(ui: &mut egui::Ui, accent: egui::Color32) {
+    let (rect, _) = ui.allocate_exact_size(egui::vec2(30.0, 26.0), egui::Sense::hover());
+    let painter = ui.painter();
+
+    let paper = egui::Rect::from_min_size(
+        rect.min + egui::vec2(8.0, 1.0),
+        egui::vec2(14.0, 11.0),
+    );
+    painter.rect_filled(paper, 2.0, egui::Color32::WHITE);
+    painter.rect_stroke(paper, 2.0, egui::Stroke::new(1.2, accent));
+
+    let body = egui::Rect::from_min_size(
+        rect.min + egui::vec2(2.0, 8.0),
+        egui::vec2(26.0, 13.0),
+    );
+    painter.rect_filled(body, 3.0, accent);
+
+    let tray = egui::Rect::from_min_size(
+        rect.min + egui::vec2(7.0, 16.0),
+        egui::vec2(16.0, 9.0),
+    );
+    painter.rect_filled(tray, 1.5, egui::Color32::WHITE);
+    painter.rect_stroke(tray, 1.5, egui::Stroke::new(1.2, accent));
+    painter.line_segment(
+        [tray.left_top() + egui::vec2(3.0, 3.0), tray.right_top() + egui::vec2(-3.0, 3.0)],
+        egui::Stroke::new(1.0, egui::Color32::from_gray(150)),
+    );
+}
+
 /// Rileva le stampanti installate su Windows tramite PowerShell/WMI senza dipendenze pesanti.
 fn rileva_stampanti_windows() -> Vec<String> {
     #[cfg(target_os = "windows")]
@@ -357,25 +387,45 @@ impl eframe::App for StampaCPApp {
         let accent = egui::Color32::from_rgb(42, 111, 214);
         let danger = egui::Color32::from_rgb(200, 65, 58);
 
-        // Barra superiore (senza numero versione, come richiesto)
+        // Spaziature e controlli ridotti per sfruttare meglio lo spazio disponibile.
+        let mut style = (*ctx.style()).clone();
+        style.spacing.item_spacing = egui::vec2(5.0, 3.0);
+        style.spacing.button_padding = egui::vec2(5.0, 2.0);
+        style.spacing.interact_size = egui::vec2(16.0, 16.0);
+        style.spacing.slider_width = 90.0;
+        style.text_styles.insert(
+            egui::TextStyle::Body,
+            egui::FontId::proportional(13.0),
+        );
+        style.text_styles.insert(
+            egui::TextStyle::Button,
+            egui::FontId::proportional(13.0),
+        );
+        ctx.set_style(style);
+
+        // Barra superiore compatta con icona vettoriale della stampante.
         egui::TopBottomPanel::top("top_bar").show(ctx, |ui| {
-            ui.add_space(4.0);
             ui.horizontal(|ui| {
-                if ui
-                    .button(" ℹ Info ")
-                    .on_hover_text("Informazioni su StampaCP")
-                    .clicked()
-                {
-                    self.mostra_info = !self.mostra_info;
-                }
+                disegna_icona_stampante(ui, accent);
+                ui.label(
+                    egui::RichText::new("StampaCP")
+                        .size(17.0)
+                        .strong()
+                        .color(accent),
+                );
                 ui.with_layout(
-                    egui::Layout::centered_and_justified(egui::Direction::LeftToRight),
+                    egui::Layout::right_to_left(egui::Align::Center),
                     |ui| {
-                        ui.strong("StampaCP");
+                        if ui
+                            .small_button("ℹ Info")
+                            .on_hover_text("Informazioni su StampaCP")
+                            .clicked()
+                        {
+                            self.mostra_info = !self.mostra_info;
+                        }
                     },
                 );
             });
-            ui.add_space(4.0);
         });
 
         // Barra inferiore
@@ -538,7 +588,7 @@ impl eframe::App for StampaCPApp {
                     });
                 });
 
-                cols[0].add_space(6.0);
+                cols[0].add_space(3.0);
 
                 cols[0].group(|ui| {
                     ui.set_width(ui.available_width());
@@ -652,7 +702,7 @@ impl eframe::App for StampaCPApp {
                     ui.checkbox(&mut self.centra_auto, "Centra automaticamente");
                 });
 
-                cols[1].add_space(6.0);
+                cols[1].add_space(3.0);
 
                 cols[1].group(|ui| {
                     ui.set_width(ui.available_width());
@@ -726,7 +776,7 @@ impl eframe::App for StampaCPApp {
                     ui.label(egui::RichText::new(self.formato.dims_label()).small().weak());
 
                     let avail = ui.available_size();
-                    let box_h = (avail.y - 24.0).max(220.0);
+                    let box_h = (avail.y - 18.0).max(190.0);
                     let (preview_rect, _) = ui.allocate_exact_size(
                         egui::vec2(avail.x, box_h),
                         egui::Sense::hover(),
@@ -867,8 +917,8 @@ fn main() -> ExitCode {
 
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_inner_size([980.0, 680.0])
-            .with_min_inner_size([860.0, 580.0])
+            .with_inner_size([900.0, 610.0])
+            .with_min_inner_size([760.0, 500.0])
             .with_title("StampaCP - Stampante Virtuale"),
         ..Default::default()
     };
