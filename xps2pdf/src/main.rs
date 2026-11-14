@@ -246,7 +246,10 @@ impl StampaCPApp {
             let idx = self.destinazione_idx - 1;
             format!(
                 "Stampante fisica: {}",
-                self.stampanti_fisiche.get(idx).map(|p| p.nome.clone()).unwrap_or_default()
+                self.stampanti_fisiche
+                    .get(idx)
+                    .map(|p| p.nome.clone())
+                    .unwrap_or_default()
             )
         }
     }
