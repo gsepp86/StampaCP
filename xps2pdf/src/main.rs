@@ -10,8 +10,10 @@
 use eframe::egui;
 use std::env;
 use std::process::{Command, ExitCode};
+use std::sync::mpsc::Receiver;
+use std::thread;
 
-const VERSIONE: &str = "1.0.0";
+const VERSIONE: &str = "2.0.0";
 const GITHUB: &str = "https://github.com/gsepp86/StampaCP";
 const PAYPAL: &str = "https://paypal.me/PeppeCP";
 
@@ -165,6 +167,7 @@ struct StampaCPApp {
     mostra_info: bool,
     mostra_avanzate: bool,
     messaggio_stato: Option<String>,
+    aggiornamento_rx: Option<Receiver<String>>,
 }
 
 impl StampaCPApp {
@@ -208,6 +211,7 @@ impl StampaCPApp {
             mostra_info: false,
             mostra_avanzate: false,
             messaggio_stato: None,
+            aggiornamento_rx: None,
         }
     }
 
@@ -324,28 +328,70 @@ impl StampaCPApp {
     }
 }
 
-/// Disegna una piccola icona vettoriale della stampante, senza immagini o dipendenze esterne.
-fn disegna_icona_stampante(ui: &mut egui::Ui, accent: egui::Color32) {
-    let (rect, _) = ui.allocate_exact_size(egui::vec2(30.0, 26.0), egui::Sense::hover());
-    let painter = ui.painter();
+/// Controlla l'ultima release pubblicata nel repository GitHub.
+fn controlla_aggiornamenti() -> String {
+    #[cfg(target_os = "windows")]
+    {
+        let script = r#"$ErrorActionPreference = 'Stop'; try { $r = Invoke-RestMethod -UseBasicParsing -Uri 'https://api.github.com/repos/gsepp86/StampaCP/releases/latest' -Headers @{ 'User-Agent' = 'StampaCP' }; Write-Output ('OK|' + $r.tag_name + '|' + $r.html_url) } catch { if ($_.Exception.Response -and [int]$_.Exception.Response.StatusCode -eq 404) { Write-Output 'NONE' } else { Write-Output ('ERROR|' + $_.Exception.Message); exit 1 } }"#;
+        let output = match Command::new("powershell")
+            .args(["-NoProfile", "-NonInteractive", "-Command", script])
+            .output()
+        {
+            Ok(output) if output.status.success() => output,
+            Ok(output) => {
+                return format!(
+                    "Impossibile controllare gli aggiornamenti: {}",
+                    String::from_utf8_lossy(&output.stderr).trim()
+                );
+            }
+            Err(error) => return format!("Avvio controllo aggiornamenti non riuscito: {error}"),
+        };
 
-    let paper = egui::Rect::from_min_size(rect.min + egui::vec2(8.0, 1.0), egui::vec2(14.0, 11.0));
-    painter.rect_filled(paper, 2.0, egui::Color32::WHITE);
-    painter.rect_stroke(paper, 2.0, egui::Stroke::new(1.2_f32, accent));
+        let risposta = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        if risposta == "NONE" {
+            return "Nessuna release pubblicata su GitHub al momento.".to_string();
+        }
+        let mut campi = risposta.splitn(3, '|');
+        if campi.next() != Some("OK") {
+            return format!("Risposta GitHub non valida: {risposta}");
+        }
+        let versione = campi.next().unwrap_or_default();
+        let url = campi.next().unwrap_or_default();
+        if versione.is_empty() || url.is_empty() {
+            return "Informazioni sulla versione non disponibili.".to_string();
+        }
+        if versione_nuova(versione, VERSIONE) {
+            let _ = Command::new("cmd").args(["/C", "start", "", url]).spawn();
+            format!("Nuova versione {versione} disponibile: pagina di download aperta.")
+        } else {
+            format!("StampaCP è aggiornato (versione {VERSIONE}).")
+        }
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        "Il controllo aggiornamenti è disponibile nella versione Windows.".to_string()
+    }
+}
 
-    let body = egui::Rect::from_min_size(rect.min + egui::vec2(2.0, 8.0), egui::vec2(26.0, 13.0));
-    painter.rect_filled(body, 3.0, accent);
-
-    let tray = egui::Rect::from_min_size(rect.min + egui::vec2(7.0, 16.0), egui::vec2(16.0, 9.0));
-    painter.rect_filled(tray, 1.5, egui::Color32::WHITE);
-    painter.rect_stroke(tray, 1.5, egui::Stroke::new(1.2_f32, accent));
-    painter.line_segment(
-        [
-            tray.left_top() + egui::vec2(3.0, 3.0),
-            tray.right_top() + egui::vec2(-3.0, 3.0),
-        ],
-        egui::Stroke::new(1.0_f32, egui::Color32::from_gray(150)),
-    );
+fn versione_nuova(disponibile: &str, corrente: &str) -> bool {
+    fn numeri(versione: &str) -> Vec<u64> {
+        versione
+            .trim()
+            .trim_start_matches('v')
+            .split('.')
+            .map(|parte| parte.split('-').next().unwrap_or(parte).parse().unwrap_or(0))
+            .collect()
+    }
+    let nuova = numeri(disponibile);
+    let attuale = numeri(corrente);
+    for indice in 0..nuova.len().max(attuale.len()) {
+        let a = *nuova.get(indice).unwrap_or(&0);
+        let b = *attuale.get(indice).unwrap_or(&0);
+        if a != b {
+            return a > b;
+        }
+    }
+    false
 }
 
 /// Rileva le stampanti installate su Windows tramite PowerShell/WMI senza dipendenze pesanti.
@@ -395,10 +441,17 @@ impl eframe::App for StampaCPApp {
             .insert(egui::TextStyle::Button, egui::FontId::proportional(13.0));
         ctx.set_style(style);
 
-        // Barra superiore compatta con icona vettoriale della stampante.
+        // Recupera in modo asincrono l'esito della ricerca aggiornamenti.
+        if let Some(rx) = &self.aggiornamento_rx {
+            if let Ok(messaggio) = rx.try_recv() {
+                self.messaggio_stato = Some(messaggio);
+                self.aggiornamento_rx = None;
+            }
+        }
+
+        // La stessa icona di StampaCP è incorporata nell'eseguibile e nella finestra.
         egui::TopBottomPanel::top("top_bar").show(ctx, |ui| {
             ui.horizontal(|ui| {
-                disegna_icona_stampante(ui, accent);
                 ui.label(
                     egui::RichText::new("StampaCP")
                         .size(17.0)
@@ -406,12 +459,20 @@ impl eframe::App for StampaCPApp {
                         .color(accent),
                 );
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if ui
-                        .small_button("ℹ Info")
-                        .on_hover_text("Informazioni su StampaCP")
-                        .clicked()
-                    {
+                    if ui.small_button("ℹ Info").on_hover_text("Informazioni su StampaCP").clicked() {
                         self.mostra_info = !self.mostra_info;
+                    }
+                    let cerca = ui.add_enabled(
+                        self.aggiornamento_rx.is_none(),
+                        egui::Button::new("↻ Cerca aggiornamenti"),
+                    );
+                    if cerca.clicked() {
+                        let (tx, rx) = std::sync::mpsc::channel();
+                        self.aggiornamento_rx = Some(rx);
+                        self.messaggio_stato = Some("Ricerca aggiornamenti in corso…".to_string());
+                        thread::spawn(move || {
+                            let _ = tx.send(controlla_aggiornamenti());
+                        });
                     }
                 });
             });
@@ -904,11 +965,21 @@ fn main() -> ExitCode {
 
     let input_xps = args.get(1).cloned();
 
+    let icon_image = image::load_from_memory(include_bytes!(concat!(env!("OUT_DIR"), "/stampacp.ico")))
+        .expect("icona StampaCP non valida")
+        .into_rgba8();
+    let icon = egui::IconData {
+        width: icon_image.width(),
+        height: icon_image.height(),
+        rgba: icon_image.into_raw(),
+    };
+
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_inner_size([900.0, 610.0])
             .with_min_inner_size([760.0, 500.0])
-            .with_title("StampaCP - Stampante Virtuale"),
+            .with_title("StampaCP - Stampante Virtuale")
+            .with_icon(Some(std::sync::Arc::new(icon))),
         ..Default::default()
     };
 
