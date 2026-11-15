@@ -35,7 +35,7 @@ La finestra si allarga automaticamente in base al nome della stampante più lung
 
 Per usare StampaCP come stampante virtuale basta consegnarle il file XPS prodotto dal driver:
 
-1. ogni file `.xps`/`.oxps` copiato nella cartella di transito (predefinita: `%LOCALAPPDATA%\StampaCP\Coda`)
+1. ogni file `.xps`/`.oxps` copiato nella cartella di transito (predefinita: `%ProgramData%\StampaCP\Coda`)
    viene convertito in PDF nella cartella `Documenti\Stampe` e rimosso dalla coda; i lavori non
    convertibili dopo alcuni tentativi vengono spostati in `Coda\Errori`;
 2. la stessa cartella e la cartella di uscita sono modificabili dal riquadro «Destinazione»

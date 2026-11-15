@@ -204,7 +204,7 @@ impl StampaCPApp {
 
         let cartella_pdf = format!(r"{}\Stampe", cartella_documenti());
         let _ = fs::create_dir_all(&cartella_pdf);
-        let cartella_coda = format!(r"{}\StampaCP\Coda", cartella_dati_locali());
+        let cartella_coda = cartella_coda_predefinita();
         let _ = fs::create_dir_all(&cartella_coda);
 
         let mut app = Self {
@@ -676,6 +676,16 @@ fn cartella_dati_locali() -> String {
             .to_string();
     }
     env::temp_dir().to_string_lossy().to_string()
+}
+
+/// Cartella di transito condivisa: ProgramData, così anche la stampante
+/// installata da un altro account amministratore scrive nella stessa coda
+/// sorvegliata dall'applicazione.
+fn cartella_coda_predefinita() -> String {
+    if let Ok(programdata) = env::var("PROGRAMDATA") {
+        return format!(r"{programdata}\StampaCP\Coda");
+    }
+    format!(r"{}\StampaCP\Coda", cartella_dati_locali())
 }
 
 /// Nome PDF libero nella cartella di uscita, derivato dal file XPS ricevuto.
