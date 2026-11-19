@@ -19,7 +19,7 @@ use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
 
-const VERSIONE: &str = "2.0.0";
+const VERSIONE: &str = "2.2.0";
 const GITHUB: &str = "https://github.com/gsepp86/StampaCP";
 const PAYPAL: &str = "https://paypal.me/PeppeCP";
 
