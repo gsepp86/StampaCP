@@ -38,6 +38,19 @@ jobs:
       - name: Test
         run: cargo test --workspace
 
+      - name: Build installer (Inno Setup)
+        shell: pwsh
+        run: |
+          choco install innosetup -y --no-progress
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer\StampaCP.iss
+
+      - name: Upload installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: StampaCP-setup
+          path: dist/*.exe
+          if-no-files-found: error
+
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
