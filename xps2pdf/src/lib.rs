@@ -58,8 +58,32 @@ pub fn convert_file(input: &str, output: &str) -> Result<(), ConvertError> {
     Ok(())
 }
 
+/// Converte il file XPS `input` in un PDF «poster»: ogni pagina viene
+/// distribuita su `colonne` × `righe` fogli dello stesso formato.
+pub fn convert_file_poster(
+    input: &str,
+    output: &str,
+    colonne: u32,
+    righe: u32,
+) -> Result<(), ConvertError> {
+    let xps = fs::read(input)?;
+    let pdf = convert_bytes_poster(&xps, colonne, righe)?;
+    if let Some(cartella) = std::path::Path::new(output).parent() {
+        if !cartella.as_os_str().is_empty() {
+            fs::create_dir_all(cartella)?;
+        }
+    }
+    fs::write(output, pdf)?;
+    Ok(())
+}
+
 /// Converte i byte di un pacchetto XPS in byte di un PDF.
 pub fn convert_bytes(xps: &[u8]) -> Result<Vec<u8>, ConvertError> {
+    convert_bytes_poster(xps, 1, 1)
+}
+
+/// Come `convert_bytes`, con la distribuzione «poster» su più fogli.
+pub fn convert_bytes_poster(xps: &[u8], colonne: u32, righe: u32) -> Result<Vec<u8>, ConvertError> {
     let pacchetto = Package::open(xps)?;
     let pagine = raccogli_pagine(&pacchetto)?;
     if pagine.is_empty() {
@@ -73,7 +97,44 @@ pub fn convert_bytes(xps: &[u8]) -> Result<Vec<u8>, ConvertError> {
     for (nodo, parte) in &pagine {
         convertite.push(renderer.render_page(nodo, parte)?);
     }
+    let convertite = if colonne > 1 || righe > 1 {
+        espandi_poster(convertite, colonne.max(1), righe.max(1))
+    } else {
+        convertite
+    };
     Ok(renderer.finish(convertite))
+}
+
+/// Divide ogni pagina in `colonne` × `righe` pagine di formato uguale
+/// all'originale: il contenuto viene ingrandito e ogni foglio ne mostra
+/// una porzione, da incollare insieme come un poster.
+fn espandi_poster(
+    pagine: Vec<render::PaginaPdf>,
+    colonne: u32,
+    righe: u32,
+) -> Vec<render::PaginaPdf> {
+    let mut risultato = Vec::with_capacity(pagine.len() * (colonne * righe) as usize);
+    for pagina in pagine {
+        let (w, h) = (pagina.larghezza, pagina.altezza);
+        for riga in 0..righe {
+            for colonna in 0..colonne {
+                let x = -(colonna as f64) * w;
+                let y = -(riga as f64) * h;
+                let contenuto = format!(
+                    "q\n0 0 {w:.3} {h:.3} re W n\n{colonne} 0 0 {righe} {x:.3} {y:.3} cm\n{}\nQ\n",
+                    pagina.contenuto
+                );
+                risultato.push(render::PaginaPdf {
+                    larghezza: w,
+                    altezza: h,
+                    contenuto,
+                    font: pagina.font.clone(),
+                    immagini: pagina.immagini.clone(),
+                });
+            }
+        }
+    }
+    risultato
 }
 
 /// Individua le pagine del documento seguendo FixedDocumentSequence e
