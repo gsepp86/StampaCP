@@ -45,9 +45,10 @@ Source: "Installa-Stampante.ps1"; DestDir: "{app}"; Flags: ignoreversion
 Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExe}"; IconFilename: "{app}\{#MyAppExe}"
 Name: "{group}\Disinstalla {#MyAppName}"; Filename: "{uninstallexe}"
 Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExe}"; Tasks: desktopicon; IconFilename: "{app}\{#MyAppExe}"
-Name: "{userstartup}\{#MyAppName}"; Filename: "{app}\{#MyAppExe}"; Tasks: autostart; IconFilename: "{app}\{#MyAppExe}"
+Name: "{userstartup}\{#MyAppName}"; Filename: "{app}\{#MyAppExe}"; Parameters: "--coda"; Tasks: autostart; IconFilename: "{app}\{#MyAppExe}"
 
 [Run]
 Filename: "powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\Installa-Stampante.ps1"""; StatusMsg: "Installazione della stampante virtuale {#MyAppName}..."; Flags: runhidden waituntilterminated
+Filename: "{app}\{#MyAppExe}"; Parameters: "--coda"; Flags: nowait runhidden; Tasks: autostart
 Filename: "{app}\{#MyAppExe}"; Description: "Avvia {#MyAppName}"; Flags: nowait postinstall skipifsilent unchecked
 

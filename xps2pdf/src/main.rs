@@ -13,7 +13,7 @@ use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::mpsc::{Receiver, Sender};
 use std::sync::Arc;
 use std::thread;
@@ -153,6 +153,8 @@ impl ModalitaColore {
 }
 
 struct StampaCPApp {
+    poster: u32,
+    poster_condiviso: Arc<AtomicU32>,
     input_xps: Option<String>,
     stampanti_fisiche: Vec<String>,
     destinazione_idx: usize, // 0 = Salva come PDF, 1.. = Stampanti fisiche
@@ -242,6 +244,8 @@ impl StampaCPApp {
             messaggio_stato: None,
             aggiornamento_rx: None,
 
+            poster: leggi_poster(),
+            poster_condiviso: Arc::new(AtomicU32::new(leggi_poster())),
             cartella_coda,
             coda_attiva: true,
             coda_rx: None,
@@ -307,7 +311,8 @@ impl StampaCPApp {
     /// impostazioni correnti.
     fn aggiorna_coda(&mut self) {
         let cartella = self.cartella_coda.trim().to_string();
-        if !self.coda_attiva || cartella.is_empty() {
+        // Se il servizio in background è attivo è lui a convertire la coda.
+        if !self.coda_attiva || cartella.is_empty() || servizio_attivo(&cartella) {
             self.ferma_coda();
             return;
         }
@@ -322,7 +327,8 @@ impl StampaCPApp {
         let (tx, rx) = std::sync::mpsc::channel();
         let flag = Arc::clone(&attivo);
         let cartella_thread = cartella.clone();
-        thread::spawn(move || sorveglia_coda(cartella_thread, uscita, flag, tx));
+        let poster = Arc::clone(&self.poster_condiviso);
+        thread::spawn(move || sorveglia_coda(cartella_thread, uscita, poster, flag, tx));
         self.coda_rx = Some(rx);
         self.coda_thread = Some(CodaAttiva { cartella, attivo });
     }
@@ -420,7 +426,7 @@ impl StampaCPApp {
                 );
                 return;
             };
-            match xps2pdf::convert_file(&ingresso, &out) {
+            match xps2pdf::convert_file_poster(&ingresso, &out, self.poster, self.poster) {
                 Ok(()) => {
                     if da_coda {
                         let _ = fs::remove_file(&ingresso);
@@ -710,6 +716,7 @@ fn percorso_pdf_automatico(cartella: &str, sorgente: &str) -> String {
 fn sorveglia_coda(
     cartella: String,
     uscita: String,
+    poster: Arc<AtomicU32>,
     attivo: Arc<AtomicBool>,
     tx: Sender<EventoCoda>,
 ) {
@@ -752,7 +759,8 @@ fn sorveglia_coda(
                 }
                 let sorgente = percorso.to_string_lossy().to_string();
                 let destinazione = percorso_pdf_automatico(&uscita, &sorgente);
-                match xps2pdf::convert_file(&sorgente, &destinazione) {
+                let lati = poster.load(Ordering::Relaxed).max(1);
+                match xps2pdf::convert_file_poster(&sorgente, &destinazione, lati, lati) {
                     Ok(()) => {
                         if fs::remove_file(&percorso).is_ok() {
                             gia_convertiti.remove(&percorso);
@@ -789,7 +797,78 @@ fn sorveglia_coda(
                 }
             }
         }
-        thread::sleep(Duration::from_millis(1200));
+        thread::sleep(Duration::from_millis(300));
+    }
+}
+
+/// File con l'impostazione «poster» (N × N fogli), condiviso tra finestra e servizio.
+fn percorso_impostazioni_poster() -> PathBuf {
+    PathBuf::from(format!(r"{}\StampaCP\poster.txt", cartella_dati_locali()))
+}
+
+/// Legge il numero di fogli per lato del poster (1 = disattivato).
+fn leggi_poster() -> u32 {
+    fs::read_to_string(percorso_impostazioni_poster())
+        .ok()
+        .and_then(|testo| testo.trim().parse::<u32>().ok())
+        .filter(|valore| (1..=4).contains(valore))
+        .unwrap_or(1)
+}
+
+/// Salva l'impostazione «poster» letta da finestra e servizio.
+fn salva_poster(lati: u32) {
+    let percorso = percorso_impostazioni_poster();
+    if let Some(cartella) = percorso.parent() {
+        let _ = fs::create_dir_all(cartella);
+    }
+    let _ = fs::write(percorso, lati.to_string());
+}
+
+/// Il servizio in background segnala la sua attività aggiornando un file
+/// nella cartella di transito; se è recente la finestra non converte la coda.
+fn servizio_attivo(cartella: &str) -> bool {
+    fs::metadata(Path::new(cartella).join(FILE_SERVIZIO))
+        .and_then(|meta| meta.modified())
+        .ok()
+        .and_then(|istante| istante.elapsed().ok())
+        .map(|eta| eta < Duration::from_secs(10))
+        .unwrap_or(false)
+}
+
+const FILE_SERVIZIO: &str = ".servizio";
+
+/// Servizio senza finestra (avviato all'accesso con `--coda`): converte in
+/// PDF ogni lavoro che arriva sulla stampante virtuale.
+fn esegui_servizio_coda() -> ExitCode {
+    let cartella = cartella_coda_predefinita();
+    let uscita = format!(r"{}\Stampe", cartella_documenti());
+    let _ = fs::create_dir_all(&cartella);
+    let poster = Arc::new(AtomicU32::new(leggi_poster()));
+    let attivo = Arc::new(AtomicBool::new(true));
+    let (tx, rx) = std::sync::mpsc::channel::<EventoCoda>();
+
+    // Il file con l'impostazione «poster» può cambiare dalla finestra.
+    let poster_thread = Arc::clone(&poster);
+    thread::spawn(move || loop {
+        poster_thread.store(leggi_poster(), Ordering::Relaxed);
+        thread::sleep(Duration::from_secs(2));
+    });
+
+    let cartella_thread = cartella.clone();
+    let attivo_thread = Arc::clone(&attivo);
+    thread::spawn(move || sorveglia_coda(cartella_thread, uscita, poster, attivo_thread, tx));
+
+    // Il servizio segnala di essere attivo, così la finestra non fa doppio lavoro.
+    let percorso_servizio = Path::new(&cartella).join(FILE_SERVIZIO);
+    loop {
+        let _ = fs::write(&percorso_servizio, b"attivo");
+        for evento in rx.try_iter() {
+            match evento {
+                EventoCoda::Creato(_) => {}
+                EventoCoda::Errore(dettaglio) => registra_errore(&dettaglio),
+            }
+        }
+        thread::sleep(Duration::from_secs(2));
     }
 }
 
@@ -874,12 +953,6 @@ impl eframe::App for StampaCPApp {
         // La stessa icona di StampaCP è incorporata nell'eseguibile e nella finestra.
         egui::TopBottomPanel::top("top_bar").show(ctx, |ui| {
             ui.horizontal(|ui| {
-                ui.label(
-                    egui::RichText::new("StampaCP")
-                        .size(17.0)
-                        .strong()
-                        .color(accent),
-                );
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     if ui
                         .small_button("ℹ Info")
@@ -1252,6 +1325,21 @@ impl eframe::App for StampaCPApp {
                     });
                     ui.checkbox(&mut self.ruota_auto, "Ruota automaticamente");
                     ui.checkbox(&mut self.centra_auto, "Centra automaticamente");
+                    ui.horizontal(|ui| {
+                        ui.label("Poster:");
+                        egui::ComboBox::from_id_salt("poster")
+                            .selected_text(if self.poster == 1 {
+                                "Nessuno".to_string()
+                            } else {
+                                format!("{0} × {0} fogli", self.poster)
+                            })
+                            .show_ui(ui, |ui| {
+                                ui.selectable_value(&mut self.poster, 1, "Nessuno");
+                                ui.selectable_value(&mut self.poster, 2, "2 × 2 fogli");
+                                ui.selectable_value(&mut self.poster, 3, "3 × 3 fogli");
+                                ui.selectable_value(&mut self.poster, 4, "4 × 4 fogli");
+                            });
+                    });
                 });
 
                 cols[1].add_space(3.0);
@@ -1450,6 +1538,12 @@ impl eframe::App for StampaCPApp {
             });
         });
 
+        // Il poster scelto vale per Salva PDF e per i lavori in arrivo.
+        if self.poster_condiviso.load(Ordering::Relaxed) != self.poster {
+            self.poster_condiviso.store(self.poster, Ordering::Relaxed);
+            salva_poster(self.poster);
+        }
+
         // Riallinea il sorvegliante alla cartella eventualmente modificata.
         self.aggiorna_coda();
     }
@@ -1476,6 +1570,10 @@ fn main() -> ExitCode {
                 ExitCode::FAILURE
             }
         };
+    }
+
+    if args.iter().skip(1).any(|argomento| argomento == "--coda") {
+        return esegui_servizio_coda();
     }
 
     let input_xps = posizionali.first().cloned();
