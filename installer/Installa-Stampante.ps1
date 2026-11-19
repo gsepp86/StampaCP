@@ -44,6 +44,15 @@ if ($esistente) {
     Add-Printer -Name 'StampaCP' -DriverName $driver -PortName $porta
 }
 
+# Verifica che la stampante compaia davvero nell'elenco di Windows: senza
+# questo controllo un'installazione apparentemente riuscita potrebbe non
+# essere visibile tra le stampanti.
+$creata = Get-Printer -Name 'StampaCP' -ErrorAction SilentlyContinue
+if (-not $creata -or $creata.PortName -ne $porta) {
+    Write-Error "La stampante 'StampaCP' non risulta installata correttamente. Verifica il servizio Spooler di Windows e riprova come amministratore."
+    exit 1
+}
+
 Write-Output "Stampante 'StampaCP' installata (driver: $driver)."
 Write-Output "Cartella di transito: $coda"
 exit 0
