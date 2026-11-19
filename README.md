@@ -52,7 +52,7 @@ Poiché **StampaCP** sfrutta i driver di stampa nativi e firmati di Windows (evi
    ```cmd
    ISCC.exe installer\StampaCP.iss
    ```
-2. Avvia `dist\StampaCP-2.0.0-setup.exe`: oltre al programma viene creata la stampante
+2. Avvia `dist\StampaCP-2.2.0-setup.exe`: oltre al programma viene creata la stampante
    **StampaCP** (driver XPS di Windows con porta sulla cartella di transito) e, se lo richiedi,
    l'avvio automatico di StampaCP all'accensione del PC.
 3. Stampa un documento scegliendo la stampante «StampaCP»: il PDF compare in `Documenti\Stampe`
